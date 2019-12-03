@@ -1,11 +1,11 @@
-mod error;
+pub mod error;
 mod ast;
 pub mod lexer;
 
 use std::iter::Peekable;
 use source_span::{Span, Position};
 use crate::Loc;
-pub use error::*;
+use error::*;
 pub use ast::*;
 use lexer::{Token, Keyword, Delimiter};
 
@@ -135,6 +135,10 @@ impl Parsable for Statement {
                 span.append(verb_objects_list.span());
                 expect_dot(lexer, &mut span)?;
                 Statement::Triples(subject, verb_objects_list)
+            },
+            Token::Group(Delimiter::Bracket, group) => {
+                panic!("TODO")
+                // let verb_objects_list = parse_verb_objects_list(lexer, span.end())?;
             },
             Token::Group(Delimiter::Parenthesis, group) => {
                 let mut subjects = Vec::new();

@@ -8,3 +8,5 @@ edition = "2018"
 source-span = "*"
 utf8-decode = "*"
 grdf = { path = "../grdf" }
+curie = "*"
+ordered-float = "*"
