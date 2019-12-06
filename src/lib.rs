@@ -6,6 +6,7 @@ extern crate ordered_float;
 mod location;
 mod syntax;
 
+use std::hash::Hash;
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
@@ -33,17 +34,19 @@ impl fmt::Display for Error {
     }
 }
 
-struct Context<'a> {
-    ds: &'a mut grdf::Dataset,
+struct Context<'a, T: 'a + grdf::Entity + From<grdf::Node>, V: 'a + From<grdf::Literal>> {
+    ds: &'a mut grdf::Dataset<T, V>,
     prefixes: PrefixMapping,
     nammed_blank_nodes: HashMap<BlankNode, usize>,
     blank_node_count: usize
 }
 
-impl<'a> TryFrom<&'a Loc<Document>> for grdf::Dataset {
-    type Error = Loc<Error>;
+pub trait Compile<T: grdf::Entity, V> {
+    fn compile(&self) -> Result<grdf::Dataset<T, V>, Loc<Error>>;
+}
 
-    fn try_from(doc: &'a Loc<Document>) -> Result<grdf::Dataset, Loc<Error>> {
+impl<T: grdf::Entity + Clone + From<grdf::Node>, V: Hash + Eq + From<grdf::Literal>> Compile<T, V> for Loc<Document> {
+    fn compile(&self) -> Result<grdf::Dataset<T, V>, Loc<Error>> {
         let mut ds = grdf::Dataset::default();
         let mut ctx = Context {
             ds: &mut ds,
@@ -52,7 +55,7 @@ impl<'a> TryFrom<&'a Loc<Document>> for grdf::Dataset {
             blank_node_count: 0
         };
 
-        for stm in &doc.statements {
+        for stm in &self.statements {
             match stm.as_ref() {
                 Statement::Directive(Directive::Prefix(name, iri)) => {
                     if let Some(i) = name.find(':') {
@@ -75,7 +78,7 @@ impl<'a> TryFrom<&'a Loc<Document>> for grdf::Dataset {
             }
         }
 
-        for stm in &doc.statements {
+        for stm in &self.statements {
             match stm.as_ref() {
                 Statement::Triples(subject, verb_objects_list) => {
                     ctx.add_triples(subject, verb_objects_list.as_ref())?
@@ -88,24 +91,24 @@ impl<'a> TryFrom<&'a Loc<Document>> for grdf::Dataset {
     }
 }
 
-impl<'a> Context<'a> {
+impl<'a, T: 'a + grdf::Entity + Clone + From<grdf::Node>, V: 'a + Hash + Eq + From<grdf::Literal>> Context<'a, T, V> {
     pub fn next_id(&mut self) -> usize {
         let id = self.blank_node_count;
         self.blank_node_count += 1;
         id
     }
 
-    pub fn alloc_blank_node(&mut self) -> grdf::Node {
-        grdf::Node::Anonymous(self.next_id())
+    pub fn alloc_blank_node(&mut self) -> T {
+        grdf::Node::Anonymous(self.next_id()).into()
     }
 
-    pub fn nammed_blank_node(&mut self, id: &str) -> grdf::Node {
+    pub fn nammed_blank_node(&mut self, id: &str) -> T {
         if let Some(id) = self.nammed_blank_nodes.get(id) {
-            grdf::Node::Anonymous(*id)
+            grdf::Node::Anonymous(*id).into()
         } else {
             let id = self.next_id();
             self.nammed_blank_nodes.insert(id.to_string(), id);
-            grdf::Node::Anonymous(id)
+            grdf::Node::Anonymous(id).into()
         }
     }
 
@@ -130,8 +133,8 @@ impl<'a> Context<'a> {
         }
     }
 
-    pub fn iri_to_node(&self, r: &IriRef, span: Span) -> Result<grdf::Node, Loc<Error>> {
-        Ok(grdf::Node::Nammed(self.expand_iri(r, span)?))
+    pub fn iri_to_node(&self, r: &IriRef, span: Span) -> Result<T, Loc<Error>> {
+        Ok(grdf::Node::Nammed(self.expand_iri(r, span)?).into())
     }
 
     pub fn add_triples(&mut self, subject: &Loc<Subject>, verb_objects_list: &Vec<Loc<VerbObjects>>) -> Result<(), Loc<Error>> {
@@ -159,10 +162,10 @@ impl<'a> Context<'a> {
         Ok(())
     }
 
-    pub fn assign_verb_objects_list(&mut self, subject: &grdf::Node, verb_objects_list: &Vec<Loc<VerbObjects>>) -> Result<(), Loc<Error>> {
+    pub fn assign_verb_objects_list(&mut self, subject: &T, verb_objects_list: &Vec<Loc<VerbObjects>>) -> Result<(), Loc<Error>> {
         for verb_objects in verb_objects_list {
-            let predicate = match verb_objects.verb.as_ref() {
-                Verb::A => grdf::Node::Nammed("http://www.w3.org/1999/02/22-rdf-syntax-ns#type".to_string()),
+            let predicate: T = match verb_objects.verb.as_ref() {
+                Verb::A => grdf::Node::Nammed("http://www.w3.org/1999/02/22-rdf-syntax-ns#type".to_string()).into(),
                 Verb::Predicate(iri) => {
                     self.iri_to_node(iri, verb_objects.verb.span())?
                 }
@@ -176,7 +179,7 @@ impl<'a> Context<'a> {
         Ok(())
     }
 
-    pub fn assign_predicate_object(&mut self, subject: &grdf::Node, predicate: &grdf::Node, object: &Loc<Object>) -> Result<(), Loc<Error>> {
+    pub fn assign_predicate_object(&mut self, subject: &T, predicate: &T, object: &Loc<Object>) -> Result<(), Loc<Error>> {
         match object.as_ref() {
             Object::Iri(iri) => {
                 let object_node = self.iri_to_node(iri, object.span())?;
@@ -210,7 +213,7 @@ impl<'a> Context<'a> {
                     },
                     Literal::String(s, None) => {
                         grdf::Literal::String(s.clone(), None)
-                    }
+                    },
                     Literal::Numeric(n) => {
                         match n.try_into() {
                             Ok(l) => l,
@@ -220,14 +223,14 @@ impl<'a> Context<'a> {
                     Literal::Boolean(b) => grdf::Literal::Bool(*b)
                 };
 
-                self.add_triple(subject, predicate, grdf::Object::Value(object_node))?;
+                self.add_triple(subject, predicate, grdf::Object::Value(object_node.into()))?;
             }
         }
 
         Ok(())
     }
 
-    pub fn add_triple(&mut self, subject: &grdf::Node, predicate: &grdf::Node, object: grdf::Object) -> Result<(), Loc<Error>> {
+    pub fn add_triple(&mut self, subject: &T, predicate: &T, object: grdf::Object<T, V>) -> Result<(), Loc<Error>> {
         self.ds.add(None, subject.clone(), predicate.clone(), object);
         Ok(())
     }
