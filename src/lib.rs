@@ -1,3 +1,5 @@
+#[macro_use]
+extern crate log;
 extern crate curie;
 extern crate ordered_float;
 
@@ -6,6 +8,7 @@ mod syntax;
 
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
+use std::fmt;
 use curie::{Curie, PrefixMapping};
 use source_span::Span;
 pub use location::*;
@@ -16,6 +19,18 @@ pub enum Error {
     UnknownPrefix(String),
     NoDefaultPrefix,
     InvalidLiteral
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use self::Error::*;
+        match self {
+            InvalidPrefix(id) => write!(f, "invalid prefix `{}`", id),
+            UnknownPrefix(id) => write!(f, "unknown prefix `{}`", id),
+            NoDefaultPrefix => write!(f, "no default prefix"),
+            InvalidLiteral => write!(f, "invalid literal"),
+        }
+    }
 }
 
 struct Context<'a> {
@@ -40,7 +55,16 @@ impl<'a> TryFrom<&'a Loc<Document>> for grdf::Dataset {
         for stm in &doc.statements {
             match stm.as_ref() {
                 Statement::Directive(Directive::Prefix(name, iri)) => {
-                    if let Err(_) = ctx.prefixes.add_prefix(name.as_str(), iri.as_str()) {
+                    if let Some(i) = name.find(':') {
+                        let (prefix, rest) = name.split_at(i);
+                        if rest == ":" {
+                            if let Err(_) = ctx.prefixes.add_prefix(prefix, iri.as_str()) {
+                                return Err(Loc::new(Error::InvalidPrefix(name.as_ref().clone()), name.span()))
+                            }
+                        } else {
+                            return Err(Loc::new(Error::InvalidPrefix(name.as_ref().clone()), name.span()))
+                        }
+                    } else {
                         return Err(Loc::new(Error::InvalidPrefix(name.as_ref().clone()), name.span()))
                     }
                 },
@@ -96,7 +120,9 @@ impl<'a> Context<'a> {
                     None => None
                 }, id.as_str());
                 match self.prefixes.expand_curie(&curie) {
-                    Ok(iri) => Ok(iri),
+                    Ok(iri) => {
+                        Ok(iri)
+                    },
                     Err(curie::ExpansionError::Invalid) => Err(Loc::new(Error::UnknownPrefix(prefix.clone().unwrap()), span)),
                     Err(curie::ExpansionError::MissingDefault) => Err(Loc::new(Error::NoDefaultPrefix, span))
                 }

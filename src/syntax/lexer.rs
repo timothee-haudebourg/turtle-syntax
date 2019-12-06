@@ -27,7 +27,7 @@ impl fmt::Display for Error {
 
 pub type Result<T> = std::result::Result<T, Loc<Error>>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Keyword {
     Prefix,
     Base,
@@ -39,7 +39,7 @@ pub enum Keyword {
 
 use super::ast::Numeric;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Token {
     Punct(char),
     Keyword(Keyword),
@@ -50,7 +50,7 @@ pub enum Token {
     Numeric(Numeric)
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub enum Delimiter {
     Parenthesis,
     Bracket
@@ -147,23 +147,23 @@ fn parse_string<I: Iterator<Item = io::Result<char>>>(it: &mut Peekable<I>, pos:
 
     loop {
         if let Some(c) = consume(it, &mut span)? {
-            if escape {
-                match c {
-                    'r' => string.push('\r'),
-                    'n' => string.push('\n'),
-                    't' => string.push('\t'),
-                    _ => string.push(c)
-                }
-            } else {
-                match c {
-                    '"' => {
-                        return Ok(Loc::new(Token::String(string), span))
-                    },
-                    '\\' => {
-                        escape = true
-                    },
-                    _ => string.push(c)
-                }
+            match c {
+                '"' => {
+                    return Ok(Loc::new(Token::String(string), span))
+                },
+                '\\' => {
+                    if let Some(c) = consume(it, &mut span)? {
+                        match c {
+                            'r' => string.push('\r'),
+                            'n' => string.push('\n'),
+                            't' => string.push('\t'),
+                            _ => string.push(c)
+                        }
+                    } else {
+                        return Err(Loc::new(Error::IncompleteString, span))
+                    }
+                },
+                _ => string.push(c)
             }
         } else {
             return Err(Loc::new(Error::IncompleteString, span))
@@ -210,11 +210,15 @@ fn parse_ident<I: Iterator<Item = io::Result<char>>>(it: &mut Peekable<I>, mut s
 
     loop {
         if let Some(c) = peek(it, &span)? {
-            if is_separator(c) {
+            if !id.is_empty() && is_separator(c) {
                 break
             } else {
                 consume(it, &mut span)?;
                 id.push(c);
+
+                if id == "^^" {
+                    break
+                }
             }
         } else {
             break
@@ -309,6 +313,14 @@ fn parse_numeric<I: Iterator<Item = io::Result<char>>>(it: &mut Peekable<I>, sig
 fn skip_whitespaces<I: Iterator<Item = io::Result<char>>>(it: &mut Peekable<I>, span: &mut Span) -> Result<()> {
     loop {
         match peek(it, span)? {
+            Some('#') => {
+                loop {
+                    match consume(it, span)? {
+                        None | Some('\n') => break,
+                        _ => ()
+                    }
+                }
+            },
             Some(c) if is_space(c) => {
                 consume(it, span)?;
             }
@@ -323,6 +335,11 @@ fn parse_token<I: Iterator<Item = io::Result<char>>>(it: &mut Peekable<I>, pos: 
     let mut whitespace_span = pos.into();
     skip_whitespaces(it, &mut whitespace_span)?;
     match peek(it, &whitespace_span)? {
+        Some(c) if is_punct(c) => {
+            let mut span = whitespace_span.end().into();
+            consume(it, &mut span)?;
+            Ok(Some(Loc::new(Token::Punct(c), span)))
+        }
         Some('(') | Some('[') => Ok(Some(parse_group(it, whitespace_span.end())?)),
         Some(')') | Some(']') => {
             let mut span = whitespace_span.end().into();

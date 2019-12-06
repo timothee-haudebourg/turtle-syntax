@@ -8,6 +8,7 @@ use crate::Loc;
 use error::*;
 pub use ast::*;
 use lexer::{Token, Keyword, Delimiter};
+pub use lexer::Lexer;
 
 pub trait Parsable: Sized {
     fn parse<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Self>>;
@@ -35,6 +36,7 @@ fn peek_token<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekabl
 fn consume<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, span: &mut Span) -> Result<Option<Loc<Token>>> {
     match lexer.next() {
         Some(Ok(token)) => {
+            // trace!("token: {:?}", token);
             if span.is_empty() {
                 *span = token.span();
             } else {
@@ -83,10 +85,11 @@ pub fn expect_dot<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Pee
 
 impl Parsable for Statement {
     fn parse<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Self>> {
-        let mut span = pos.into();
-        let (token, token_span) = expect(lexer, &mut span)?.into_raw_parts();
+        let mut span: Span = pos.into();
+        let (token, token_span) = peek_token(lexer, span.end())?.into_raw_parts();
         let stm = match token {
             Token::Keyword(Keyword::Prefix) => {
+                consume(lexer, &mut span)?;
                 let (token, id_span) = expect(lexer, &mut span)?.into_raw_parts();
                 match token {
                     Token::Ident(id) => {
@@ -111,6 +114,7 @@ impl Parsable for Statement {
                 }
             },
             Token::Keyword(Keyword::Base) => {
+                consume(lexer, &mut span)?;
                 let (token, iri_span) = expect(lexer, &mut span)?.into_raw_parts();
                 match token {
                     Token::Iri(iri) => {
@@ -122,46 +126,13 @@ impl Parsable for Statement {
                     unexpected => return Err(Loc::new(Error::UnexpectedToken(unexpected), iri_span))
                 }
             },
-            Token::Ident(id) => {
-                let subject = Loc::new(Subject::from(id.as_str()), token_span);
+            _ => {
+                let subject = parse_subject(lexer, span.end())?;
                 let verb_objects_list = parse_verb_objects_list(lexer, span.end())?;
                 span.append(verb_objects_list.span());
                 expect_dot(lexer, &mut span)?;
                 Statement::Triples(subject, verb_objects_list)
-            },
-            Token::Iri(iri) => {
-                let subject = Loc::new(Subject::Iri(IriRef::Iri(iri)), token_span);
-                let verb_objects_list = parse_verb_objects_list(lexer, span.end())?;
-                span.append(verb_objects_list.span());
-                expect_dot(lexer, &mut span)?;
-                Statement::Triples(subject, verb_objects_list)
-            },
-            Token::Group(Delimiter::Bracket, group) => {
-                panic!("TODO")
-                // let verb_objects_list = parse_verb_objects_list(lexer, span.end())?;
-            },
-            Token::Group(Delimiter::Parenthesis, group) => {
-                let mut subjects = Vec::new();
-                for token in group.into_iter() {
-                    let (token, token_span) = token.into_raw_parts();
-                    let subject = match token {
-                        Token::Ident(id) => {
-                            Subject::from(id.as_str())
-                        },
-                        Token::Iri(iri) => {
-                            Subject::Iri(IriRef::Iri(iri))
-                        },
-                        unexpected => return Err(Loc::new(Error::UnexpectedToken(unexpected), token_span))
-                    };
-                    subjects.push(Loc::new(subject, token_span));
-                }
-                let subject = Loc::new(Subject::Collection(subjects), token_span);
-                let verb_objects_list = parse_verb_objects_list(lexer, span.end())?;
-                span.append(verb_objects_list.span());
-                expect_dot(lexer, &mut span)?;
-                Statement::Triples(subject, verb_objects_list)
-            },
-            unexpected => return Err(Loc::new(Error::UnexpectedToken(unexpected), token_span))
+            }
         };
 
         Ok(Loc::new(stm, span))
@@ -172,31 +143,35 @@ fn parse_verb_objects_list<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer:
     let mut span: Span = pos.into();
     let mut list = Vec::new();
     loop {
-        let (token, verb_span) = peek_token(lexer, span.end())?.into_raw_parts();
-        match token {
-            Token::Punct('.') => break,
-            Token::Punct(';') => {
-                consume(lexer, &mut span)?;
-            },
-            _ => {
-                consume(lexer, &mut span)?;
-                let verb = Loc::new(match token {
-                    Token::Ident(id) => {
-                        Verb::from(id.as_str())
-                    },
-                    Token::Iri(iri) => {
-                        Verb::Predicate(IriRef::Iri(iri))
-                    },
-                    unexpected => return Err(Loc::new(Error::UnexpectedToken(unexpected), verb_span))
-                }, verb_span);
-                let objects = parse_objects(lexer, span.end())?;
-                let verb_objects_span = verb_span.union(objects.span());
-                span.append(verb_objects_span);
-                list.push(Loc::new(VerbObjects {
-                    verb: verb,
-                    objects: objects
-                }, verb_objects_span))
+        if let Some(token) = peek(lexer)? {
+            let (token, verb_span) = token.into_raw_parts();
+            match token {
+                Token::Punct('.') => break,
+                Token::Punct(';') => {
+                    consume(lexer, &mut span)?;
+                },
+                _ => {
+                    consume(lexer, &mut span)?;
+                    let verb = Loc::new(match token {
+                        Token::Ident(id) => {
+                            Verb::from(id.as_str())
+                        },
+                        Token::Iri(iri) => {
+                            Verb::Predicate(IriRef::Iri(iri))
+                        },
+                        unexpected => return Err(Loc::new(Error::UnexpectedToken(unexpected), verb_span))
+                    }, verb_span);
+                    let objects = parse_objects(lexer, span.end())?;
+                    let verb_objects_span = verb_span.union(objects.span());
+                    span.append(verb_objects_span);
+                    list.push(Loc::new(VerbObjects {
+                        verb: verb,
+                        objects: objects
+                    }, verb_objects_span))
+                }
             }
+        } else {
+            break
         }
     }
     Ok(Loc::new(list, span))
@@ -204,6 +179,38 @@ fn parse_verb_objects_list<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer:
 
 fn safe_token(token: Loc<Token>) -> lexer::Result<Loc<Token>> {
     Ok(token)
+}
+
+fn parse_subject<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Subject>> {
+    let mut span: Span = pos.into();
+    let (token, token_span) = expect(lexer, &mut span)?.into_raw_parts();
+    let subject = match token {
+        Token::Ident(id) => {
+            Subject::from(id.as_str())
+        },
+        Token::Iri(iri) => {
+            Subject::Iri(IriRef::Iri(iri))
+        },
+        Token::Group(Delimiter::Bracket, group) => {
+            let mut lexer = group.into_iter().map(safe_token).peekable();
+            let (inner_list, subject_span) = parse_verb_objects_list(&mut lexer, span.end())?.into_raw_parts();
+            span.append(subject_span);
+            Subject::Anonymous(inner_list)
+        },
+        Token::Group(Delimiter::Parenthesis, group) => {
+            let mut subjects = Vec::new();
+            let mut lexer = group.into_iter().map(safe_token).peekable();
+            while let Some(_) = lexer.peek() {
+                let subject = parse_subject(&mut lexer, span.end())?;
+                span.append(subject.span());
+                subjects.push(subject);
+            }
+            Subject::Collection(subjects)
+        },
+        unexpected => return Err(Loc::new(Error::UnexpectedToken(unexpected), token_span))
+    };
+
+    Ok(Loc::new(subject, span))
 }
 
 fn parse_object<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Object>> {
@@ -214,26 +221,32 @@ fn parse_object<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peeka
             Object::Literal(Literal::Numeric(n))
         },
         Token::String(s) => {
-            let (token, mut tag_span) = expect(lexer, &mut span)?.into_raw_parts();
-            let tag = match token {
-                Token::Keyword(Keyword::LangTag(lang)) => {
-                    Some(Loc::new(Tag::Lang(lang), tag_span))
-                },
-                Token::Keyword(Keyword::IriTag) => {
-                    let (token, token_span) = expect(lexer, &mut span)?.into_raw_parts();
-                    let iri = match token {
-                        Token::Ident(id) => {
-                            IriRef::curie_from_str(id.as_str())
-                        },
-                        Token::Iri(iri) => {
-                            IriRef::Iri(iri)
-                        },
-                        unexpected => return Err(Loc::new(Error::UnexpectedToken(unexpected), token_span))
-                    };
-                    tag_span.append(token_span);
-                    Some(Loc::new(Tag::Iri(iri), tag_span))
-                },
-                _ => None
+            let tag = if let Some(token) = peek(lexer)? {
+                let (token, mut tag_span) = token.into_raw_parts();
+                match token {
+                    Token::Keyword(Keyword::LangTag(lang)) => {
+                        expect(lexer, &mut span);
+                        Some(Loc::new(Tag::Lang(lang), tag_span))
+                    },
+                    Token::Keyword(Keyword::IriTag) => {
+                        expect(lexer, &mut span);
+                        let (token, token_span) = expect(lexer, &mut span)?.into_raw_parts();
+                        let iri = match token {
+                            Token::Ident(id) => {
+                                IriRef::curie_from_str(id.as_str())
+                            },
+                            Token::Iri(iri) => {
+                                IriRef::Iri(iri)
+                            },
+                            unexpected => return Err(Loc::new(Error::UnexpectedToken(unexpected), token_span))
+                        };
+                        tag_span.append(token_span);
+                        Some(Loc::new(Tag::Iri(iri), tag_span))
+                    },
+                    _ => None
+                }
+            } else {
+                None
             };
             Object::Literal(Literal::String(s, tag))
         },
@@ -248,6 +261,12 @@ fn parse_object<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peeka
         },
         Token::Iri(iri) => {
             Object::Iri(IriRef::Iri(iri))
+        },
+        Token::Group(Delimiter::Bracket, group) => {
+            let mut lexer = group.into_iter().map(safe_token).peekable();
+            let (inner_list, object_span) = parse_verb_objects_list(&mut lexer, span.end())?.into_raw_parts();
+            span.append(object_span);
+            Object::Anonymous(inner_list)
         },
         Token::Group(Delimiter::Parenthesis, group) => {
             let mut objects = Vec::new();
@@ -269,16 +288,24 @@ fn parse_objects<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peek
     let mut span: Span = pos.into();
     let mut objects = Vec::new();
     loop {
-        let (token, _) = peek_token(lexer, span.end())?.into_raw_parts();
-        match token {
-            Token::Punct('.') | Token::Punct(';') => break,
-            Token::Punct(',') => {
-                consume(lexer, &mut span)?;
-            },
-            _ => {
-                let object = parse_object(lexer, span.end())?;
-                span.append(object.span());
-                objects.push(object);
+        if let Some(token) = peek(lexer)? {
+            let (token, _) = token.into_raw_parts();
+            match token {
+                Token::Punct('.') | Token::Punct(';') => break,
+                Token::Punct(',') => {
+                    consume(lexer, &mut span)?;
+                },
+                _ => {
+                    let object = parse_object(lexer, span.end())?;
+                    span.append(object.span());
+                    objects.push(object);
+                }
+            }
+        } else {
+            if objects.is_empty() {
+                return Err(Loc::new(Error::UnexpectedEos, span))
+            } else {
+                break
             }
         }
     }

@@ -5,7 +5,7 @@ use crate::Loc;
 pub type Iri = String;
 pub type BlankNode = String;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum IriRef {
     Iri(Iri),
     Curie(Option<String>, String)
@@ -42,6 +42,7 @@ pub struct VerbObjects {
     pub objects: Loc<Vec<Loc<Object>>>
 }
 
+#[derive(Debug)]
 pub enum Verb {
     A,
     Predicate(IriRef)
@@ -75,6 +76,7 @@ impl<'a> From<&'a str> for Subject {
         if let Some(i) = s.find(':') {
             let (prefix, id) = s.split_at(i);
             if prefix == "_" {
+                // println!("bl: {}", s);
                 Subject::BlankNode(id.to_string())
             } else {
                 let (_, id) = id.split_at(1);
@@ -121,7 +123,7 @@ pub enum Tag {
     Iri(IriRef)
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Numeric {
     Int(i64),
     Decimal(bool, u32, u32), // sign, integer part, decimal part
