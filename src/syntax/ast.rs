@@ -27,6 +27,19 @@ pub struct Document {
     pub statements: Vec<Loc<Statement>>
 }
 
+impl Document {
+    pub fn base_prefix(&self) -> Option<&str> {
+        for stm in &self.statements {
+            match stm.as_ref() {
+                Statement::Directive(Directive::Base(iri)) => return Some(iri.as_ref()),
+                _ => ()
+            }
+        }
+
+        None
+    }
+}
+
 pub enum Statement {
     Directive(Directive),
     Triples(Loc<Subject>, Loc<Vec<Loc<VerbObjects>>>),
