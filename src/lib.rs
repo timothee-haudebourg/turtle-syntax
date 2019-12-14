@@ -1,4 +1,4 @@
-#[macro_use]
+// #[macro_use]
 extern crate log;
 extern crate curie;
 extern crate ordered_float;
@@ -8,7 +8,7 @@ mod syntax;
 
 use std::hash::Hash;
 use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
+use std::convert::{TryInto};
 use std::fmt;
 use curie::{Curie, PrefixMapping};
 use source_span::Span;

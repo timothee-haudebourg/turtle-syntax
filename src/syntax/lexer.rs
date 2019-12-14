@@ -142,7 +142,6 @@ fn parse_string<I: Iterator<Item = io::Result<char>>>(it: &mut Peekable<I>, pos:
     let mut span = pos.into();
     consume(it, &mut span)?;
 
-    let mut escape = false;
     let mut string = String::new();
 
     loop {

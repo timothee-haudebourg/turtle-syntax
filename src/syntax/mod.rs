@@ -86,7 +86,7 @@ pub fn expect_dot<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Pee
 impl Parsable for Statement {
     fn parse<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Self>> {
         let mut span: Span = pos.into();
-        let (token, token_span) = peek_token(lexer, span.end())?.into_raw_parts();
+        let (token, _) = peek_token(lexer, span.end())?.into_raw_parts();
         let stm = match token {
             Token::Keyword(Keyword::Prefix) => {
                 consume(lexer, &mut span)?;
@@ -225,11 +225,11 @@ fn parse_object<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peeka
                 let (token, mut tag_span) = token.into_raw_parts();
                 match token {
                     Token::Keyword(Keyword::LangTag(lang)) => {
-                        expect(lexer, &mut span);
+                        expect(lexer, &mut span)?;
                         Some(Loc::new(Tag::Lang(lang), tag_span))
                     },
                     Token::Keyword(Keyword::IriTag) => {
-                        expect(lexer, &mut span);
+                        expect(lexer, &mut span)?;
                         let (token, token_span) = expect(lexer, &mut span)?.into_raw_parts();
                         let iri = match token {
                             Token::Ident(id) => {
