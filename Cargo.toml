@@ -1,13 +1,17 @@
 [package]
-name = "turtle"
-version = "0.1.0"
+name = "turtle-syntax"
+version = "1.0.0"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
 edition = "2018"
+categories = ["parsing"]
+keywords = ["turtle", "rdf", "parser"]
+description = "RDF Turtle parser"
+repository = "https://github.com/timothee-haudebourg/turtle-syntax"
+documentation = "https://docs.rs/turtle-syntax"
+license = "MIT/Apache-2.0"
+readme = "README.md"
 
 [dependencies]
-log = "*"
-source-span = "*"
-utf8-decode = "*"
-grdf = { path = "../grdf" }
-curie = "*"
-ordered-float = "*"
+source-span = "^2.1.1"
+utf8-decode = "^1.0"
+iref = "^1.1"

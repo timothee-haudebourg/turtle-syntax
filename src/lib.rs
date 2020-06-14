@@ -1,237 +1,73 @@
-// #[macro_use]
-extern crate log;
-extern crate curie;
-extern crate ordered_float;
+//! A RDF Turtle parser for Rust based on [`source-span`](https://crates.io/crates/source-span).
+//!
+//! ## Basic usage
+//!
+//! Elements of the Turtle abstract syntax tree (implementing `Parsable`)
+//! are parsed using a `Token` iterator
+//! (a.k.a a lexer). A `Lexer` can be created from a `char` iterator
+//! (here using `utf8_decode::UnsafeDecoder`).
+//! We can then use the `Document::parse` function to parse a Turtle document from
+//! the lexer.
+//!
+//! ```rust
+//! use turtle_syntax::{Lexer, Document, Parsable};
+//! # use std::io::Read;
+//! # use source_span::{SourceBuffer,Position,fmt::{Formatter,Style}};
+//! # let filename = "examples/sample.ttl";
+//!
+//! // Open the file.
+//! let file = std::fs::File::open(filename).unwrap();
+//!
+//! // Create a character stream out of it.
+//! let chars = utf8_decode::UnsafeDecoder::new(file.bytes());
+//!
+//! // Create a Turtle token stream (lexer).
+//! let mut lexer = Lexer::new(chars, source_span::DEFAULT_METRICS).peekable();
+//!
+//! // Parse the Turtle document.
+//! let doc = Document::parse(&mut lexer, Position::default()).unwrap();
+//! ```
+//! Every node of the resulting abstract syntax tree is tagged with its position
+//! (span) in the source text using [`source_span::Loc`].
+//! This can be used to report eventual syntax error in a human readable way.
+//! ```rust
+//! # use std::io::Read;
+//! # use source_span::{SourceBuffer,Position,fmt::{Formatter,Style}};
+//! # use turtle_syntax::{Lexer, Document, Parsable};
+//! # let file = std::fs::File::open("examples/syntax_error.ttl").unwrap();
+//! # let metrics = source_span::DEFAULT_METRICS;
+//! # let chars = utf8_decode::UnsafeDecoder::new(file.bytes());
+//! # let buffer = SourceBuffer::new(chars, Position::default(), metrics);
+//! # let mut lexer = Lexer::new(buffer.iter(), source_span::DEFAULT_METRICS).peekable();
+//! match Document::parse(&mut lexer, Position::default()) {
+//! 	Ok(doc) => {
+//! 		// do something
+//! 	},
+//! 	Err(e) => {
+//! 		let mut err_fmt = Formatter::new();
+//! 		err_fmt.add(e.span(), None, Style::Error);
+//! 		let formatted = err_fmt.render(buffer.iter(), buffer.span(), &metrics).unwrap();
+//! 		println!("parse error: {}\n{}", e, formatted);
+//! 	}
+//! }
+//! ```
+//! The above code will have the following kind of output when a syntax error is detected:
+//! ```text
+//! parse error: invalid iri `http://www.w3.org/TR/rdf-syntax- grammar`
+//!
+//! . |
+//! 3 | @prefix ex: <http://example.org/stuff/1.0/> .
+//! 4 |
+//! 5 | <http://www.w3.org/TR/rdf-syntax- grammar>
+//!   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//! ```
 
-mod location;
-mod syntax;
+mod error;
+mod ast;
+pub mod lexer;
+mod parse;
 
-use std::hash::Hash;
-use std::collections::HashMap;
-use std::convert::{TryInto};
-use std::fmt;
-use curie::{Curie, PrefixMapping};
-use source_span::Span;
-pub use location::*;
-pub use syntax::*;
-
-pub enum Error {
-    InvalidPrefix(String),
-    UnknownPrefix(String),
-    NoDefaultPrefix,
-    InvalidLiteral
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-        match self {
-            InvalidPrefix(id) => write!(f, "invalid prefix `{}`", id),
-            UnknownPrefix(id) => write!(f, "unknown prefix `{}`", id),
-            NoDefaultPrefix => write!(f, "no default prefix"),
-            InvalidLiteral => write!(f, "invalid literal"),
-        }
-    }
-}
-
-struct Context<'a, T: 'a + grdf::Entity + From<grdf::Node>, V: 'a + From<grdf::Literal>> {
-    ds: &'a mut grdf::Dataset<T, V>,
-    prefixes: PrefixMapping,
-    nammed_blank_nodes: HashMap<BlankNode, usize>,
-    blank_node_count: usize
-}
-
-pub trait Compile<T: grdf::Entity, V> {
-    fn compile(&self) -> Result<grdf::Dataset<T, V>, Loc<Error>>;
-}
-
-impl<T: grdf::Entity + Clone + From<grdf::Node>, V: Hash + Eq + From<grdf::Literal>> Compile<T, V> for Loc<Document> {
-    fn compile(&self) -> Result<grdf::Dataset<T, V>, Loc<Error>> {
-        let mut ds = grdf::Dataset::default();
-        let mut ctx = Context {
-            ds: &mut ds,
-            prefixes: PrefixMapping::default(),
-            nammed_blank_nodes: HashMap::new(),
-            blank_node_count: 0
-        };
-
-        for stm in &self.statements {
-            match stm.as_ref() {
-                Statement::Directive(Directive::Prefix(name, iri)) => {
-                    if let Some(i) = name.find(':') {
-                        let (prefix, rest) = name.split_at(i);
-                        if rest == ":" {
-                            if let Err(_) = ctx.prefixes.add_prefix(prefix, iri.as_str()) {
-                                return Err(Loc::new(Error::InvalidPrefix(name.as_ref().clone()), name.span()))
-                            }
-                        } else {
-                            return Err(Loc::new(Error::InvalidPrefix(name.as_ref().clone()), name.span()))
-                        }
-                    } else {
-                        return Err(Loc::new(Error::InvalidPrefix(name.as_ref().clone()), name.span()))
-                    }
-                },
-                Statement::Directive(Directive::Base(iri)) => {
-                    ctx.prefixes.set_default(iri.as_str())
-                },
-                _ => ()
-            }
-        }
-
-        for stm in &self.statements {
-            match stm.as_ref() {
-                Statement::Triples(subject, verb_objects_list) => {
-                    ctx.add_triples(subject, verb_objects_list.as_ref())?
-                },
-                _ => ()
-            }
-        }
-
-        Ok(ds)
-    }
-}
-
-impl<'a, T: 'a + grdf::Entity + Clone + From<grdf::Node>, V: 'a + Hash + Eq + From<grdf::Literal>> Context<'a, T, V> {
-    pub fn next_id(&mut self) -> usize {
-        let id = self.blank_node_count;
-        self.blank_node_count += 1;
-        id
-    }
-
-    pub fn alloc_blank_node(&mut self) -> T {
-        grdf::Node::Anonymous(self.next_id()).into()
-    }
-
-    pub fn nammed_blank_node(&mut self, id: &str) -> T {
-        if let Some(id) = self.nammed_blank_nodes.get(id) {
-            grdf::Node::Anonymous(*id).into()
-        } else {
-            let id = self.next_id();
-            self.nammed_blank_nodes.insert(id.to_string(), id);
-            grdf::Node::Anonymous(id).into()
-        }
-    }
-
-    pub fn expand_iri(&self, r: &IriRef, span: Span) -> Result<String, Loc<Error>> {
-        match r {
-            IriRef::Iri(iri) => {
-                Ok(iri.clone())
-            },
-            IriRef::Curie(prefix, id) => {
-                let curie = Curie::new(match prefix {
-                    Some(prefix) => Some(prefix.as_str()),
-                    None => None
-                }, id.as_str());
-                match self.prefixes.expand_curie(&curie) {
-                    Ok(iri) => {
-                        Ok(iri)
-                    },
-                    Err(curie::ExpansionError::Invalid) => Err(Loc::new(Error::UnknownPrefix(prefix.clone().unwrap()), span)),
-                    Err(curie::ExpansionError::MissingDefault) => Err(Loc::new(Error::NoDefaultPrefix, span))
-                }
-            }
-        }
-    }
-
-    pub fn iri_to_node(&self, r: &IriRef, span: Span) -> Result<T, Loc<Error>> {
-        Ok(grdf::Node::Nammed(self.expand_iri(r, span)?).into())
-    }
-
-    pub fn add_triples(&mut self, subject: &Loc<Subject>, verb_objects_list: &Vec<Loc<VerbObjects>>) -> Result<(), Loc<Error>> {
-        match subject.as_ref() {
-            Subject::Iri(iri) => {
-                let subject_node = self.iri_to_node(iri, subject.span())?;
-                self.assign_verb_objects_list(&subject_node, verb_objects_list)?;
-            },
-            Subject::BlankNode(id) => {
-                let subject_node = self.nammed_blank_node(id.as_str());
-                self.assign_verb_objects_list(&subject_node, verb_objects_list)?;
-            },
-            Subject::Collection(subjects) => {
-                for subject in subjects {
-                    self.add_triples(subject, verb_objects_list)?;
-                }
-            },
-            Subject::Anonymous(inner_verb_objects_list) => {
-                let subject_node = self.alloc_blank_node();
-                self.assign_verb_objects_list(&subject_node, inner_verb_objects_list)?;
-                self.assign_verb_objects_list(&subject_node, verb_objects_list)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn assign_verb_objects_list(&mut self, subject: &T, verb_objects_list: &Vec<Loc<VerbObjects>>) -> Result<(), Loc<Error>> {
-        for verb_objects in verb_objects_list {
-            let predicate: T = match verb_objects.verb.as_ref() {
-                Verb::A => grdf::Node::Nammed("http://www.w3.org/1999/02/22-rdf-syntax-ns#type".to_string()).into(),
-                Verb::Predicate(iri) => {
-                    self.iri_to_node(iri, verb_objects.verb.span())?
-                }
-            };
-
-            for object in verb_objects.objects.as_ref() {
-                self.assign_predicate_object(subject, &predicate, object)?;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn assign_predicate_object(&mut self, subject: &T, predicate: &T, object: &Loc<Object>) -> Result<(), Loc<Error>> {
-        match object.as_ref() {
-            Object::Iri(iri) => {
-                let object_node = self.iri_to_node(iri, object.span())?;
-                self.add_triple(subject, predicate, grdf::Object::Entity(object_node))?;
-            },
-            Object::BlankNode(id) => {
-                let object_node = self.nammed_blank_node(id.as_str());
-                self.add_triple(subject, predicate, grdf::Object::Entity(object_node))?;
-            },
-            Object::Collection(objects) => {
-                for object in objects {
-                    self.assign_predicate_object(subject, predicate, object)?;
-                }
-            },
-            Object::Anonymous(inner_verb_objects_list) => {
-                let object_node = self.alloc_blank_node();
-                self.assign_verb_objects_list(&object_node, inner_verb_objects_list)?;
-                self.add_triple(subject, predicate, grdf::Object::Entity(object_node))?;
-            },
-            Object::Literal(l) => {
-                let object_node = match l {
-                    Literal::String(s, Some(tag)) => {
-                        let tag = match tag.as_ref() {
-                            Tag::Lang(lang) => grdf::Tag::Lang(lang.clone()),
-                            Tag::Iri(iri) => {
-                                let iri = self.expand_iri(iri, tag.span())?;
-                                grdf::Tag::Iri(iri)
-                            }
-                        };
-                        grdf::Literal::String(s.clone(), Some(tag))
-                    },
-                    Literal::String(s, None) => {
-                        grdf::Literal::String(s.clone(), None)
-                    },
-                    Literal::Numeric(n) => {
-                        match n.try_into() {
-                            Ok(l) => l,
-                            Err(_) => return Err(Loc::new(Error::InvalidLiteral, object.span()))
-                        }
-                    },
-                    Literal::Boolean(b) => grdf::Literal::Bool(*b)
-                };
-
-                self.add_triple(subject, predicate, grdf::Object::Value(object_node.into()))?;
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn add_triple(&mut self, subject: &T, predicate: &T, object: grdf::Object<T, V>) -> Result<(), Loc<Error>> {
-        self.ds.add(None, subject.clone(), predicate.clone(), object);
-        Ok(())
-    }
-}
+pub use error::*;
+pub use ast::*;
+pub use lexer::Lexer;
+pub use parse::*;
