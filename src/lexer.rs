@@ -1,16 +1,19 @@
 //! Turtle lexer.
 
 use std::iter::Peekable;
-use std::io;
 use std::fmt;
+use std::marker::PhantomData;
 use iref::IriBuf;
 use source_span::{Position, Span, Metrics, Loc};
 
 /// Lexing error.
 #[derive(Debug)]
-pub enum Error {
+pub enum Error<E: std::error::Error> {
 	/// IO error.
-	IO(std::io::Error),
+	IO(E),
+
+	/// Unexpected end of char stream.
+	UnexpectedEos,
 
 	/// Wrong closing delimiter.
 	WrongCloser(Delimiter, char),
@@ -31,11 +34,12 @@ pub enum Error {
 	InvalidIri(String)
 }
 
-impl fmt::Display for Error {
+impl<E: std::error::Error> fmt::Display for Error<E> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		use self::Error::*;
 		match self {
 			IO(e) => write!(f, "I/O: {}", e),
+			UnexpectedEos => write!(f, "unexpected end of stream"),
 			WrongCloser(_, _) => write!(f, "wrong delimiter"),
 			MissingCloser(_) => write!(f, "missing delimiter"),
 			UnclosedString => write!(f, "unclosed string"),
@@ -47,7 +51,7 @@ impl fmt::Display for Error {
 }
 
 /// Lexing result.
-pub type Result<T> = std::result::Result<T, Loc<Error>>;
+pub type Result<T, E> = std::result::Result<T, Loc<Error<E>>>;
 
 /// Turtle keywords.
 #[derive(Clone, Debug)]
@@ -120,18 +124,20 @@ impl Delimiter {
 }
 
 /// Lexer. Transforms a `char` iterator into a `Token` iterator.
-pub struct Lexer<I: Iterator<Item = io::Result<char>>, M: Metrics> {
+pub struct Lexer<E: std::error::Error, I: Iterator<Item = std::result::Result<char, E>>, M: Metrics> {
+	error: PhantomData<E>,
 	input: Peekable<I>,
 	pos: Position,
 	metrics: M
 }
 
-impl<I: Iterator<Item = io::Result<char>>, M: Metrics> Lexer<I, M> {
+impl<E: std::error::Error, I: Iterator<Item = std::result::Result<char, E>>, M: Metrics> Lexer<E, I, M> {
 	/// Create a new `Lexer` from an input `char` iterator.
 	///
 	/// The [`source_span::Metrics`] is used to correctly locate every token in the source text.
-	pub fn new(input: I, metrics: M) -> Lexer<I, M> {
+	pub fn new(input: I, metrics: M) -> Lexer<E, I, M> {
 		Lexer {
+			error: PhantomData,
 			input: input.peekable(),
 			pos: Position::default(),
 			metrics
@@ -139,7 +145,7 @@ impl<I: Iterator<Item = io::Result<char>>, M: Metrics> Lexer<I, M> {
 	}
 }
 
-fn peek<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekable<I>, span: &Span, metrics: &M) -> Result<Option<char>> {
+fn peek<E: std::error::Error, I: Iterator<Item = std::result::Result<char, E>>, M: Metrics>(it: &mut Peekable<I>, span: &Span, metrics: &M) -> Result<Option<char>, E> {
 	match it.peek() {
 		Some(Ok(c)) => {
 			Ok(Some(*c))
@@ -152,7 +158,7 @@ fn peek<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekable<I>, 
 	}
 }
 
-fn consume<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekable<I>, span: &mut Span, metrics: &M) -> Result<Option<char>> {
+fn consume<E: std::error::Error, I: Iterator<Item = std::result::Result<char, E>>, M: Metrics>(it: &mut Peekable<I>, span: &mut Span, metrics: &M) -> Result<Option<char>, E> {
 	match it.next() {
 		Some(Ok(c)) => {
 			span.push(c, metrics);
@@ -163,7 +169,7 @@ fn consume<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekable<I
 	}
 }
 
-fn parse_group<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekable<I>, pos: Position, metrics: &M) -> Result<Loc<Token>> {
+fn parse_group<E: std::error::Error, I: Iterator<Item = std::result::Result<char, E>>, M: Metrics>(it: &mut Peekable<I>, pos: Position, metrics: &M) -> Result<Loc<Token>, E> {
 	let mut span = pos.into();
 
 	let delimiter = match consume(it, &mut span, metrics)?.unwrap() {
@@ -197,7 +203,7 @@ fn parse_group<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekab
 	}
 }
 
-fn parse_string<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekable<I>, pos: Position, metrics: &M) -> Result<Loc<Token>> {
+fn parse_string<E: std::error::Error, I: Iterator<Item = std::result::Result<char, E>>, M: Metrics>(it: &mut Peekable<I>, pos: Position, metrics: &M) -> Result<Loc<Token>, E> {
 	let mut span = pos.into();
 	consume(it, &mut span, metrics)?;
 
@@ -229,7 +235,7 @@ fn parse_string<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peeka
 	}
 }
 
-fn parse_iri<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekable<I>, pos: Position, metrics: &M) -> Result<Loc<Token>> {
+fn parse_iri<E: std::error::Error, I: Iterator<Item = std::result::Result<char, E>>, M: Metrics>(it: &mut Peekable<I>, pos: Position, metrics: &M) -> Result<Loc<Token>, E> {
 	let mut span = pos.into();
 	consume(it, &mut span, metrics)?;
 
@@ -268,7 +274,7 @@ fn is_separator(c: char) -> bool {
 	is_space(c) || is_punct(c) || c == '<' || c == '(' || c == ')' || c == '[' || c == ']' || c == '"' || c == '@'
 }
 
-fn parse_ident<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekable<I>, mut span: Span, metrics: &M) -> Result<Loc<Token>> {
+fn parse_ident<E: std::error::Error, I: Iterator<Item = std::result::Result<char, E>>, M: Metrics>(it: &mut Peekable<I>, mut span: Span, metrics: &M) -> Result<Loc<Token>, E> {
 	let mut id = String::new();
 
 	loop {
@@ -301,7 +307,7 @@ fn parse_ident<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekab
 	Ok(Loc::new(token, span))
 }
 
-fn parse_numeric<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekable<I>, sign: bool, mut span: Span, metrics: &M) -> Result<Loc<Token>> {
+fn parse_numeric<E: std::error::Error, I: Iterator<Item = std::result::Result<char, E>>, M: Metrics>(it: &mut Peekable<I>, sign: bool, mut span: Span, metrics: &M) -> Result<Loc<Token>, E> {
 	let mut integer = 0;
 	let mut decimal = 0;
 	let mut exponent_sign = true;
@@ -367,13 +373,13 @@ fn parse_numeric<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peek
 		State::Decimal => Numeric::Decimal(sign, integer as u32, decimal as u32),
 		State::Exponent if exponent_sign => Numeric::Double(sign, integer as u32, decimal as u32, exponent),
 		State::Exponent if !exponent_sign => Numeric::Double(sign, integer as u32, decimal as u32, -exponent),
-		_ => return Err(Loc::new(Error::IO(io::Error::new(io::ErrorKind::UnexpectedEof, "unexpected end of stream")), span))
+		_ => return Err(Loc::new(Error::UnexpectedEos, span))
 	};
 
 	Ok(Loc::new(Token::Numeric(n), span))
 }
 
-fn skip_whitespaces<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekable<I>, span: &mut Span, metrics: &M) -> Result<()> {
+fn skip_whitespaces<E: std::error::Error, I: Iterator<Item = std::result::Result<char, E>>, M: Metrics>(it: &mut Peekable<I>, span: &mut Span, metrics: &M) -> Result<(), E> {
 	loop {
 		match peek(it, span, metrics)? {
 			Some('#') => {
@@ -394,7 +400,7 @@ fn skip_whitespaces<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut P
 	Ok(())
 }
 
-fn parse_token<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekable<I>, pos: Position, metrics: &M) -> Result<Option<Loc<Token>>> {
+fn parse_token<E: std::error::Error, I: Iterator<Item = std::result::Result<char, E>>, M: Metrics>(it: &mut Peekable<I>, pos: Position, metrics: &M) -> Result<Option<Loc<Token>>, E> {
 	let mut whitespace_span = pos.into();
 	skip_whitespaces(it, &mut whitespace_span, metrics)?;
 	match peek(it, &whitespace_span, metrics)? {
@@ -433,10 +439,10 @@ fn parse_token<I: Iterator<Item = io::Result<char>>, M: Metrics>(it: &mut Peekab
 	}
 }
 
-impl<I: Iterator<Item = io::Result<char>>, M: Metrics> Iterator for Lexer<I, M> {
-	type Item = Result<Loc<Token>>;
+impl<E: std::error::Error, I: Iterator<Item = std::result::Result<char, E>>, M: Metrics> Iterator for Lexer<E, I, M> {
+	type Item = Result<Loc<Token>, E>;
 
-	fn next(&mut self) -> Option<Result<Loc<Token>>> {
+	fn next(&mut self) -> Option<Result<Loc<Token>, E>> {
 		match parse_token(&mut self.input, self.pos, &self.metrics) {
 			Ok(Some(token)) => {
 				self.pos = token.span().end();

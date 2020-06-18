@@ -14,10 +14,10 @@ pub trait Parsable: Sized {
 	/// Parse the element, pulling the tokens from the given lexer.
 	///
 	/// Since the grammar of Turtle is LL1, the lexer must be [`Peekable`] to be able to look the next token ahead.
-	fn parse<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Self>>;
+	fn parse<E: std::error::Error, L: Iterator<Item = lexer::Result<Loc<Token>, E>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Self>, E>;
 }
 
-fn peek<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>) -> Result<Option<Loc<Token>>> {
+fn peek<E: std::error::Error, L: Iterator<Item = lexer::Result<Loc<Token>, E>>>(lexer: &mut Peekable<L>) -> Result<Option<Loc<Token>>, E> {
 	match lexer.peek() {
 		Some(Ok(token)) => Ok(Some(token.clone())),
 		Some(Err(_)) => {
@@ -28,7 +28,7 @@ fn peek<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>) 
 	}
 }
 
-fn peek_token<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Token>> {
+fn peek_token<E: std::error::Error, L: Iterator<Item = lexer::Result<Loc<Token>, E>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Token>, E> {
 	match peek(lexer) {
 		Ok(Some(token)) => Ok(token),
 		Ok(None) => Err(Loc::new(Error::UnexpectedEos, pos.into())),
@@ -36,7 +36,7 @@ fn peek_token<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekabl
 	}
 }
 
-fn consume<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, span: &mut Span) -> Result<Option<Loc<Token>>> {
+fn consume<E: std::error::Error, L: Iterator<Item = lexer::Result<Loc<Token>, E>>>(lexer: &mut Peekable<L>, span: &mut Span) -> Result<Option<Loc<Token>>, E> {
 	match lexer.next() {
 		Some(Ok(token)) => {
 			// trace!("token: {:?}", token);
@@ -52,7 +52,7 @@ fn consume<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L
 	}
 }
 
-fn expect<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, span: &mut Span) -> Result<Loc<Token>> {
+fn expect<E: std::error::Error, L: Iterator<Item = lexer::Result<Loc<Token>, E>>>(lexer: &mut Peekable<L>, span: &mut Span) -> Result<Loc<Token>, E> {
 	match consume(lexer, span) {
 		Ok(Some(token)) => Ok(token),
 		Ok(None) => Err(Loc::new(Error::UnexpectedEos, span.end().into())),
@@ -61,7 +61,7 @@ fn expect<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>
 }
 
 impl Parsable for Document {
-	fn parse<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Self>> {
+	fn parse<E: std::error::Error, L: Iterator<Item = lexer::Result<Loc<Token>, E>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Self>, E> {
 		let mut span: Span = pos.into();
 		let mut statements = Vec::new();
 		while peek(lexer)?.is_some() {
@@ -76,7 +76,7 @@ impl Parsable for Document {
 	}
 }
 
-fn expect_dot<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, span: &mut Span) -> Result<()> {
+fn expect_dot<E: std::error::Error, L: Iterator<Item = lexer::Result<Loc<Token>, E>>>(lexer: &mut Peekable<L>, span: &mut Span) -> Result<(), E> {
 	let (token, dot_span) = expect(lexer, span)?.into_raw_parts();
 	match token {
 		Token::Punct('.') => {
@@ -87,7 +87,7 @@ fn expect_dot<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekabl
 }
 
 impl Parsable for Statement {
-	fn parse<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Self>> {
+	fn parse<E: std::error::Error, L: Iterator<Item = lexer::Result<Loc<Token>, E>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Self>, E> {
 		let mut span: Span = pos.into();
 		let (token, _) = peek_token(lexer, span.end())?.into_raw_parts();
 		let stm = match token {
@@ -144,7 +144,7 @@ impl Parsable for Statement {
 	}
 }
 
-fn parse_verb_objects_list<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Vec<Loc<VerbObjects>>>> {
+fn parse_verb_objects_list<E: std::error::Error, L: Iterator<Item = lexer::Result<Loc<Token>, E>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Vec<Loc<VerbObjects>>>, E> {
 	let mut span: Span = pos.into();
 	let mut list = Vec::new();
 	loop {
@@ -182,11 +182,11 @@ fn parse_verb_objects_list<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer:
 	Ok(Loc::new(list, span))
 }
 
-fn safe_token(token: Loc<Token>) -> lexer::Result<Loc<Token>> {
+fn safe_token<E: std::error::Error>(token: Loc<Token>) -> lexer::Result<Loc<Token>, E> {
 	Ok(token)
 }
 
-fn parse_subject<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Subject>> {
+fn parse_subject<E: std::error::Error, L: Iterator<Item = lexer::Result<Loc<Token>, E>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Subject>, E> {
 	let mut span: Span = pos.into();
 	let (token, token_span) = expect(lexer, &mut span)?.into_raw_parts();
 	let subject = match token {
@@ -218,7 +218,7 @@ fn parse_subject<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peek
 	Ok(Loc::new(subject, span))
 }
 
-fn parse_object<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Object>> {
+fn parse_object<E: std::error::Error, L: Iterator<Item = lexer::Result<Loc<Token>, E>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Object>, E> {
 	let mut span: Span = pos.into();
 	let (token, token_span) = expect(lexer, &mut span)?.into_raw_parts();
 	let object = match token {
@@ -289,7 +289,7 @@ fn parse_object<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peeka
 	Ok(Loc::new(object, span))
 }
 
-fn parse_objects<L: Iterator<Item = lexer::Result<Loc<Token>>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Vec<Loc<Object>>>> {
+fn parse_objects<E: std::error::Error, L: Iterator<Item = lexer::Result<Loc<Token>, E>>>(lexer: &mut Peekable<L>, pos: Position) -> Result<Loc<Vec<Loc<Object>>>, E> {
 	let mut span: Span = pos.into();
 	let mut objects = Vec::new();
 	loop {

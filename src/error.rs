@@ -4,9 +4,9 @@ use super::lexer;
 
 /// Syntax errors.
 #[derive(Debug)]
-pub enum Error {
+pub enum Error<E: std::error::Error> {
 	/// Lexing error.
-	Lexer(lexer::Error),
+	Lexer(lexer::Error<E>),
 
 	/// Unexpected end of stream.
 	UnexpectedEos,
@@ -15,7 +15,7 @@ pub enum Error {
 	UnexpectedToken(lexer::Token)
 }
 
-impl fmt::Display for Error {
+impl<E: std::error::Error> fmt::Display for Error<E> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		use self::Error::*;
 		match self {
@@ -27,10 +27,10 @@ impl fmt::Display for Error {
 }
 
 /// Parsing result.
-pub type Result<T> = std::result::Result<T, Loc<Error>>;
+pub type Result<T, E> = std::result::Result<T, Loc<Error<E>>>;
 
-impl From<lexer::Error> for Error {
-	fn from(e: lexer::Error) -> Error {
+impl<E: std::error::Error> From<lexer::Error<E>> for Error<E> {
+	fn from(e: lexer::Error<E>) -> Error<E> {
 		Error::Lexer(e)
 	}
 }
