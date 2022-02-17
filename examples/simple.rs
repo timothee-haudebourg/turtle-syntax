@@ -1,41 +1,47 @@
+use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::files::SimpleFiles;
+use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+use locspan::Loc;
 use std::fs::File;
 use std::io::Read;
-use utf8_decode::UnsafeDecoder;
-use source_span::{
-	SourceBuffer,
-	Position,
-	fmt::{
-		Formatter,
-		Style
-	}
-};
 use turtle_syntax::{
-	Lexer,
+	lexing::{Lexer, Utf8Decoded},
+	parsing::Parsable,
 	Document,
-	Parsable
 };
+
+fn infallible<T>(t: T) -> Result<T, std::convert::Infallible> { Ok(t) }
 
 fn main() -> std::io::Result<()> {
 	let mut args = std::env::args();
 	args.next();
 
-	for filename in args {
-		let file = File::open(filename)?;
-		let metrics = source_span::DEFAULT_METRICS;
-		let chars = UnsafeDecoder::new(file.bytes());
-		let buffer = SourceBuffer::new(chars, Position::default(), metrics);
-		let mut lexer = Lexer::new(buffer.iter(), metrics).peekable();
+	let mut files = SimpleFiles::new();
 
-		match Document::parse(&mut lexer, Position::default()) {
+	for filename in args {
+		let mut file = File::open(&filename)?;
+
+		let mut buffer = String::new();
+		file.read_to_string(&mut buffer)?;
+		let file_id = files.add(filename.clone(), buffer);
+		let buffer = files.get(file_id).unwrap();
+
+		let chars = Utf8Decoded::new(buffer.source().chars().map(infallible));
+		let mut lexer = Lexer::new(file_id, chars.peekable());
+
+		match Document::parse(&mut lexer) {
 			Ok(_doc) => {
 				// do something
-			},
-			Err(e) => {
-				let mut err_fmt = Formatter::new();
-				err_fmt.add(e.span(), None, Style::Error);
-				let formatted = err_fmt.render(buffer.iter(), buffer.span(), &metrics)?;
-				println!("parse error: {}\n{}", e, formatted);
-				std::process::exit(1);
+			}
+			Err(Loc(e, loc)) => {
+				let diagnostic = Diagnostic::error()
+					.with_message(format!("parse error: {}", e))
+					.with_labels(vec![Label::primary(*loc.file(), loc.span())]);
+
+				let writer = StandardStream::stderr(ColorChoice::Auto);
+				let config = codespan_reporting::term::Config::default();
+				codespan_reporting::term::emit(&mut writer.lock(), &config, &files, &diagnostic)
+					.unwrap();
 			}
 		}
 	}

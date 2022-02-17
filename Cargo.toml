@@ -1,8 +1,8 @@
 [package]
 name = "turtle-syntax"
-version = "1.1.0"
+version = "2.0.0"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
-edition = "2018"
+edition = "2021"
 categories = ["parsing"]
 keywords = ["turtle", "rdf", "parser"]
 description = "RDF Turtle parser"
@@ -12,8 +12,10 @@ license = "MIT/Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-source-span = "^2.1.1"
-iref = "^1.1"
+iref = "2.1"
+locspan = "0.2.3"
+langtag = "0.2"
+unicase = "2.6"
 
 [dev-dependencies]
-utf8-decode = "^1.0"
+codespan-reporting = "0.11.1"

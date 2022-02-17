@@ -1,44 +1,25 @@
 //! Syntax elements of Turtle.
-
-use source_span::Loc;
-use iref::{
-	Iri,
-	IriBuf
-};
-
-/// A blank node name.
-pub type BlankNode = String;
+use iref::IriRefBuf;
+use langtag::LanguageTagBuf;
+use locspan::Loc;
 
 /// An IRI or compact IRI.
 #[derive(Clone, Debug)]
-pub enum IriRef {
-	Iri(IriBuf),
-	Curie(Option<String>, String)
-}
-
-impl IriRef {
-	pub fn curie_from_str(s: &str) -> IriRef {
-		if let Some(i) = s.find(':') {
-			let (prefix, id) = s.split_at(i);
-			let (_, id) = id.split_at(1);
-			IriRef::Curie(Some(prefix.to_string()), id.to_string())
-		} else {
-			IriRef::Curie(None, s.to_string())
-		}
-	}
+pub enum Iri<F> {
+	IriRef(IriRefBuf),
+	Compact(Option<Loc<String, F>>, Loc<String, F>),
 }
 
 /// A Turtle document.
-pub struct Document {
-	pub statements: Vec<Loc<Statement>>
+pub struct Document<F> {
+	pub statements: Vec<Loc<Statement<F>, F>>,
 }
 
-impl Document {
-	pub fn base_prefix(&self) -> Option<Iri> {
+impl<F> Document<F> {
+	pub fn base_prefix(&self) -> Option<iref::IriRef> {
 		for stm in &self.statements {
-			match stm.as_ref() {
-				Statement::Directive(Directive::Base(iri)) => return Some(iri.as_iri()),
-				_ => ()
+			if let Statement::Directive(Directive::Base(iri)) = stm.as_ref() {
+				return Some(iri.as_iri_ref());
 			}
 		}
 
@@ -47,151 +28,101 @@ impl Document {
 }
 
 /// A statement (directive of triples declaration).
-pub enum Statement {
+pub enum Statement<F> {
 	/// Directive.
-	Directive(Directive),
+	Directive(Directive<F>),
 
 	/// Triples declaration.
-	Triples(Loc<Subject>, Loc<Vec<Loc<VerbObjects>>>),
+	Triples(Loc<Subject<F>, F>, Vec<Loc<PredicateObjects<F>, F>>),
 }
 
 /// A directive.
-pub enum Directive {
+pub enum Directive<F> {
 	/// `@prefix` directive.
-	Prefix(Loc<String>, Loc<IriBuf>),
+	Prefix(Loc<String, F>, Loc<IriRefBuf, F>),
 
 	/// `@base` directive.
-	Base(Loc<IriBuf>)
-}
+	Base(Loc<IriRefBuf, F>),
 
-/// verb-objects part of a triples declaration.
-pub struct VerbObjects {
-	pub verb: Loc<Verb>,
-	pub objects: Loc<Vec<Loc<Object>>>
+	/// SPARQL `PREFIX` directive.
+	SparqlPrefix(Loc<String, F>, Loc<IriRefBuf, F>),
+
+	/// SPARQL `BASE` directive.
+	SparqlBase(Loc<IriRefBuf, F>),
 }
 
 /// Verb (either `a` or a predicate).
 #[derive(Debug)]
-pub enum Verb {
+pub enum Verb<F> {
 	/// `a` keyword.
 	A,
 
 	/// Predicate.
-	Predicate(IriRef)
+	Predicate(Iri<F>),
 }
 
-impl<'a> From<&'a str> for Verb {
-	fn from(s: &'a str) -> Verb {
-		if s == "a" {
-			Verb::A
-		} else {
-			if let Some(i) = s.find(':') {
-				let (prefix, id) = s.split_at(i);
-				let (_, id) = id.split_at(1);
-				Verb::Predicate(IriRef::Curie(Some(prefix.to_string()), id.to_string()))
-			} else {
-				Verb::Predicate(IriRef::Curie(None, s.to_string()))
-			}
-		}
-	}
+#[derive(Debug)]
+pub enum BlankNode<F> {
+	Label(String),
+	Anonymous(Vec<Loc<PredicateObjects<F>, F>>),
 }
 
 /// Subject of a triples declaration.
-pub enum Subject {
+pub enum Subject<F> {
 	/// IRI or compact IRI.
-	Iri(IriRef),
+	Iri(Iri<F>),
 
 	/// Blank node.
-	BlankNode(BlankNode),
+	BlankNode(BlankNode<F>),
 
 	/// Collection of subjects.
-	Collection(Vec<Loc<Subject>>),
-
-	/// No subject.
-	Blank(Vec<Loc<VerbObjects>>)
-}
-
-impl<'a> From<&'a str> for Subject {
-	fn from(s: &'a str) -> Subject {
-		if let Some(i) = s.find(':') {
-			let (prefix, id) = s.split_at(i);
-			if prefix == "_" {
-				// println!("bl: {}", s);
-				Subject::BlankNode(id.to_string())
-			} else {
-				let (_, id) = id.split_at(1);
-				Subject::Iri(IriRef::Curie(Some(prefix.to_string()), id.to_string()))
-			}
-		} else {
-			Subject::Iri(IriRef::Curie(None, s.to_string()))
-		}
-	}
+	Collection(Vec<Loc<Object<F>, F>>),
 }
 
 /// Object of a triples declaration.
-pub enum Object {
+#[derive(Debug)]
+pub enum Object<F> {
 	/// IRI or compact IRI.
-	Iri(IriRef),
+	Iri(Iri<F>),
 
 	/// Blank node.
-	BlankNode(BlankNode),
+	BlankNode(BlankNode<F>),
 
 	/// Collection of objects.
-	Collection(Vec<Loc<Object>>),
-
-	/// No object.
-	Blank(Vec<Loc<VerbObjects>>),
+	Collection(Vec<Loc<Self, F>>),
 
 	/// Literal value.
-	Literal(Literal)
+	Literal(Literal<F>),
 }
 
-impl<'a> From<&'a str> for Object {
-	fn from(s: &'a str) -> Object {
-		if let Some(i) = s.find(':') {
-			let (prefix, id) = s.split_at(i);
-			if prefix == "_" {
-				Object::BlankNode(id.to_string())
-			} else {
-				let (_, id) = id.split_at(1);
-				Object::Iri(IriRef::Curie(Some(prefix.to_string()), id.to_string()))
-			}
-		} else {
-			Object::Iri(IriRef::Curie(None, s.to_string()))
-		}
-	}
+#[derive(Debug)]
+pub struct PredicateObjects<F> {
+	pub verb: Loc<Verb<F>, F>,
+	pub objects: Loc<Vec<Loc<Object<F>, F>>, F>,
 }
 
 /// Literal value.
-pub enum Literal {
-	/// Maybe tagged string.
-	String(String, Option<Loc<Tag>>),
+#[derive(Debug)]
+pub enum Literal<F> {
+	Rdf(RdfLiteral<F>),
 
-	/// NUmerical value.
+	/// Numerical value.
 	Numeric(Numeric),
 
 	/// Boolean value.
-	Boolean(bool)
+	Boolean(bool),
 }
 
-/// String tag.
-pub enum Tag {
-	/// Lang tag for lang strings.
-	Lang(String),
+#[derive(Debug)]
+pub enum RdfLiteral<F> {
+	/// String literal.
+	String(Loc<String, F>),
 
-	/// IRI tag.
-	Iri(IriRef)
+	/// Typed string literal.
+	TypedString(Loc<String, F>, Loc<IriRefBuf, F>),
+
+	/// Language string.
+	LangString(Loc<String, F>, Loc<LanguageTagBuf, F>),
 }
 
-/// Numerical value.
-#[derive(Clone, Copy, Debug)]
-pub enum Numeric {
-	/// Integer.
-	Int(i64),
-
-	/// Decimal value.
-	Decimal(bool, u32, u32), // sign, integer part, decimal part
-
-	/// Double precision decimal value.
-	Double(bool, u32, u32, i32) // sign, integer part, decimal part, exponent
-}
+pub use crate::lexing::Numeric;
