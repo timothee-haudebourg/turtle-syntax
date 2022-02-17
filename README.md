@@ -5,9 +5,9 @@
 [![License](https://img.shields.io/crates/l/turtle-syntax.svg?style=flat-square)](https://github.com/timothee-haudebourg/turtle-syntax#license)
 [![Documentation](https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square)](https://docs.rs/turtle-syntax)
 
-Turtle is a textual syntax for RDF that allows an RDF graph to be completely written in a compact and natural text form,
-with abbreviations for common usage patterns and datatypes.
-This library provides a Turtle parser for Rust that keeps tracks of code mapping metadata for each syntax node using the [`locspan`](https://crates.io/crates/locspan) library.
+Turtle is a textual syntax for RDF that allows an RDF graph to be completely
+written in a compact and natural text form, with abbreviations for common
+usage patterns and datatypes. This library provides a Turtle parser for Rust that keeps tracks of code mapping metadata for each syntax node using the [`locspan`](https://crates.io/crates/locspan) library.
 
 ### Basic usage
 

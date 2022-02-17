@@ -382,7 +382,7 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 		&mut self,
 	) -> Result<Loc<LanguageTagOrKeyword, F>, Loc<Error<E>, F>> {
 		let mut tag = String::new();
-		
+
 		loop {
 			match self.peek_char()? {
 				None => {
@@ -396,7 +396,7 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 					if c.is_ascii_alphabetic() {
 						tag.push(self.expect_char()?);
 					} else if c.is_whitespace() {
-						break
+						break;
 					} else {
 						self.next_char()?;
 						return Err(Loc(Error::Unexpected(Some(c)), self.pos.last()));
@@ -714,9 +714,7 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 									Ok(kw) => {
 										Ok(Loc(NameOrKeyword::Keyword(kw), self.pos.current()))
 									}
-									Err(NotAKeyword) => {
-										break self.pos.current_span()
-									}
+									Err(NotAKeyword) => break self.pos.current_span(),
 								}
 							} else {
 								Err(Loc(Error::Unexpected(unexpected), self.pos.end()))
@@ -780,8 +778,13 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 				}
 			}
 			_ => match namespace {
-				Some((namespace, _)) => Ok(Loc(NameOrKeyword::Namespace(namespace), self.pos.current())),
-				None => Ok(Loc(NameOrKeyword::Namespace(String::new()), self.pos.current()))
+				Some((namespace, _)) => {
+					Ok(Loc(NameOrKeyword::Namespace(namespace), self.pos.current()))
+				}
+				None => Ok(Loc(
+					NameOrKeyword::Namespace(String::new()),
+					self.pos.current(),
+				)),
 			},
 		}
 	}
