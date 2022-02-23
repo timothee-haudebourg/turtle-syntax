@@ -1,6 +1,6 @@
 [package]
 name = "turtle-syntax"
-version = "2.0.0-beta"
+version = "2.1.0-beta"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
 edition = "2021"
 categories = ["parsing"]
@@ -16,6 +16,7 @@ iref = "2.1"
 locspan = "0.2.3"
 langtag = "0.2"
 unicase = "2.6"
+rdf-types = { version = "0.1.2", features = ["loc"] }
 
 [dev-dependencies]
 codespan-reporting = "0.11.1"

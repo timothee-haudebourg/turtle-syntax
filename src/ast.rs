@@ -1,6 +1,5 @@
 //! Syntax elements of Turtle.
 use iref::IriRefBuf;
-use langtag::LanguageTagBuf;
 use locspan::Loc;
 
 /// An IRI or compact IRI.
@@ -63,7 +62,7 @@ pub enum Verb<F> {
 
 #[derive(Debug)]
 pub enum BlankNode<F> {
-	Label(String),
+	Label(rdf_types::BlankIdBuf),
 	Anonymous(Vec<Loc<PredicateObjects<F>, F>>),
 }
 
@@ -104,25 +103,13 @@ pub struct PredicateObjects<F> {
 /// Literal value.
 #[derive(Debug)]
 pub enum Literal<F> {
-	Rdf(RdfLiteral<F>),
+	Rdf(rdf_types::loc::Literal<F>),
 
 	/// Numerical value.
 	Numeric(Numeric),
 
 	/// Boolean value.
 	Boolean(bool),
-}
-
-#[derive(Debug)]
-pub enum RdfLiteral<F> {
-	/// String literal.
-	String(Loc<String, F>),
-
-	/// Typed string literal.
-	TypedString(Loc<String, F>, Loc<IriRefBuf, F>),
-
-	/// Language string.
-	LangString(Loc<String, F>, Loc<LanguageTagBuf, F>),
 }
 
 pub use crate::lexing::Numeric;

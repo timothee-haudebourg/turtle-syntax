@@ -109,8 +109,8 @@ pub enum Token {
 	End(Delimiter),
 	LangTag(LanguageTagBuf),
 	IriRef(IriRefBuf),
-	StringLiteral(String),
-	BlankNodeLabel(String),
+	StringLiteral(rdf_types::StringLiteral),
+	BlankNodeLabel(rdf_types::BlankIdBuf),
 	Punct(Punct),
 	Namespace(String),
 	CompactIri(Option<(String, Span)>, (String, Span)),
@@ -508,7 +508,7 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 
 	/// Parses a string literal, starting after the first `"` until the closing
 	/// `"`.
-	fn next_string_literal(&mut self, delimiter: char) -> Result<Loc<String, F>, Loc<Error<E>, F>> {
+	fn next_string_literal(&mut self, delimiter: char) -> Result<Loc<rdf_types::StringLiteral, F>, Loc<Error<E>, F>> {
 		let mut string = String::new();
 
 		let mut long = false;
@@ -567,7 +567,7 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 			}
 		}
 
-		Ok(Loc(string, self.pos.current()))
+		Ok(Loc(string.into(), self.pos.current()))
 	}
 
 	/// Parses an IRI reference, starting after the first `<` until the closing
@@ -639,7 +639,7 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 	}
 
 	/// Parses a blank node label, starting after the first `_`.
-	fn next_blank_node_label(&mut self) -> Result<Loc<String, F>, Loc<Error<E>, F>> {
+	fn next_blank_node_label(&mut self) -> Result<Loc<rdf_types::BlankIdBuf, F>, Loc<Error<E>, F>> {
 		match self.next_char()? {
 			Some(':') => {
 				let mut label = String::new();
@@ -666,7 +666,7 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 							}
 						}
 
-						Ok(Loc(label, self.pos.current()))
+						Ok(Loc(unsafe { rdf_types::BlankIdBuf::new_unchecked(label) }, self.pos.current()))
 					}
 					unexpected => Err(Loc(Error::Unexpected(unexpected), self.pos.last())),
 				}

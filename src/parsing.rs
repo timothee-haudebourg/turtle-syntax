@@ -458,9 +458,9 @@ fn parse_object_list<F: Clone, L: Tokens<F>>(
 #[allow(clippy::type_complexity)]
 fn parse_rdf_literal<F: Clone, L: Tokens<F>>(
 	lexer: &mut L,
-	string: String,
+	string: rdf_types::StringLiteral,
 	string_loc: locspan::Location<F>,
-) -> Result<Loc<crate::RdfLiteral<F>, F>, Loc<Error<L::Error>, F>> {
+) -> Result<Loc<rdf_types::loc::Literal<F>, F>, Loc<Error<L::Error>, F>> {
 	match lexer.peek().map_loc_err(Error::Lexer)? {
 		Loc(Some(Token::LangTag(_)), tag_loc) => {
 			let tag = match lexer.next().map_loc_err(Error::Lexer)? {
@@ -471,7 +471,7 @@ fn parse_rdf_literal<F: Clone, L: Tokens<F>>(
 			let mut loc = string_loc.clone();
 			loc.span_mut().append(tag_loc.span());
 			Ok(Loc(
-				crate::RdfLiteral::LangString(Loc(string, string_loc), Loc(tag, tag_loc)),
+				rdf_types::loc::Literal::LangString(Loc(string, string_loc), Loc(tag, tag_loc)),
 				loc,
 			))
 		}
@@ -482,7 +482,7 @@ fn parse_rdf_literal<F: Clone, L: Tokens<F>>(
 					let mut loc = string_loc.clone();
 					loc.span_mut().append(iri_ref_loc.span());
 					Ok(Loc(
-						crate::RdfLiteral::TypedString(
+						rdf_types::loc::Literal::TypedString(
 							Loc(string, string_loc),
 							Loc(iri_ref, iri_ref_loc),
 						),
@@ -493,7 +493,7 @@ fn parse_rdf_literal<F: Clone, L: Tokens<F>>(
 			}
 		}
 		_ => Ok(Loc(
-			crate::RdfLiteral::String(Loc(string, string_loc.clone())),
+			rdf_types::loc::Literal::String(Loc(string, string_loc.clone())),
 			string_loc,
 		)),
 	}
