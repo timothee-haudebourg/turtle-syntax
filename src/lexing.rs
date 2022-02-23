@@ -1,3 +1,4 @@
+use crate::{BlankIdBuf, StringLiteral};
 use iref::IriRefBuf;
 use langtag::LanguageTagBuf;
 use locspan::{Loc, Location, Span};
@@ -109,8 +110,8 @@ pub enum Token {
 	End(Delimiter),
 	LangTag(LanguageTagBuf),
 	IriRef(IriRefBuf),
-	StringLiteral(rdf_types::StringLiteral),
-	BlankNodeLabel(rdf_types::BlankIdBuf),
+	StringLiteral(StringLiteral),
+	BlankNodeLabel(BlankIdBuf),
 	Punct(Punct),
 	Namespace(String),
 	CompactIri(Option<(String, Span)>, (String, Span)),
@@ -511,7 +512,7 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 	fn next_string_literal(
 		&mut self,
 		delimiter: char,
-	) -> Result<Loc<rdf_types::StringLiteral, F>, Loc<Error<E>, F>> {
+	) -> Result<Loc<StringLiteral, F>, Loc<Error<E>, F>> {
 		let mut string = String::new();
 
 		let mut long = false;
@@ -642,7 +643,7 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 	}
 
 	/// Parses a blank node label, starting after the first `_`.
-	fn next_blank_node_label(&mut self) -> Result<Loc<rdf_types::BlankIdBuf, F>, Loc<Error<E>, F>> {
+	fn next_blank_node_label(&mut self) -> Result<Loc<BlankIdBuf, F>, Loc<Error<E>, F>> {
 		match self.next_char()? {
 			Some(':') => {
 				let mut label = String::new();
@@ -670,7 +671,7 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 						}
 
 						Ok(Loc(
-							unsafe { rdf_types::BlankIdBuf::new_unchecked(label) },
+							unsafe { BlankIdBuf::new_unchecked(label) },
 							self.pos.current(),
 						))
 					}

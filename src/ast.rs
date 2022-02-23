@@ -1,6 +1,8 @@
 //! Syntax elements of Turtle.
 use iref::IriRefBuf;
 use locspan::Loc;
+pub use rdf_types::loc::Literal as RdfLiteral;
+pub use rdf_types::{BlankIdBuf, StringLiteral};
 
 /// An IRI or compact IRI.
 #[derive(Clone, Debug)]
@@ -62,7 +64,7 @@ pub enum Verb<F> {
 
 #[derive(Debug)]
 pub enum BlankNode<F> {
-	Label(rdf_types::BlankIdBuf),
+	Label(BlankIdBuf),
 	Anonymous(Vec<Loc<PredicateObjects<F>, F>>),
 }
 
@@ -103,7 +105,7 @@ pub struct PredicateObjects<F> {
 /// Literal value.
 #[derive(Debug)]
 pub enum Literal<F> {
-	Rdf(rdf_types::loc::Literal<F>),
+	Rdf(RdfLiteral<F>),
 
 	/// Numerical value.
 	Numeric(Numeric),
