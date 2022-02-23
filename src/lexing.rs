@@ -508,7 +508,10 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 
 	/// Parses a string literal, starting after the first `"` until the closing
 	/// `"`.
-	fn next_string_literal(&mut self, delimiter: char) -> Result<Loc<rdf_types::StringLiteral, F>, Loc<Error<E>, F>> {
+	fn next_string_literal(
+		&mut self,
+		delimiter: char,
+	) -> Result<Loc<rdf_types::StringLiteral, F>, Loc<Error<E>, F>> {
 		let mut string = String::new();
 
 		let mut long = false;
@@ -666,7 +669,10 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 							}
 						}
 
-						Ok(Loc(unsafe { rdf_types::BlankIdBuf::new_unchecked(label) }, self.pos.current()))
+						Ok(Loc(
+							unsafe { rdf_types::BlankIdBuf::new_unchecked(label) },
+							self.pos.current(),
+						))
 					}
 					unexpected => Err(Loc(Error::Unexpected(unexpected), self.pos.last())),
 				}
