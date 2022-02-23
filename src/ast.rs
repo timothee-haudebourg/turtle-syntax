@@ -1,7 +1,7 @@
 //! Syntax elements of Turtle.
 use iref::IriRefBuf;
 use locspan::Loc;
-pub use rdf_types::loc::Literal as RdfLiteral;
+use langtag::LanguageTagBuf;
 pub use rdf_types::{BlankIdBuf, StringLiteral};
 
 /// An IRI or compact IRI.
@@ -112,6 +112,19 @@ pub enum Literal<F> {
 
 	/// Boolean value.
 	Boolean(bool),
+}
+
+/// RDF Literal.
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+pub enum RdfLiteral<F> {
+	/// Untyped string literal.
+	String(Loc<StringLiteral, F>),
+
+	/// Typed string literal.
+	TypedString(Loc<StringLiteral, F>, Loc<IriRefBuf, F>),
+
+	/// Language string.
+	LangString(Loc<StringLiteral, F>, Loc<LanguageTagBuf, F>),
 }
 
 pub use crate::lexing::Numeric;
