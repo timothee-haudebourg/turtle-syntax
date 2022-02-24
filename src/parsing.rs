@@ -30,7 +30,7 @@ impl<E: 'static + std::error::Error> std::error::Error for Error<E> {
 	}
 }
 
-pub trait Parsable<F>: Sized {
+pub trait Parse<F>: Sized {
 	#[allow(clippy::type_complexity)]
 	fn parse<L: Tokens<F>>(lexer: &mut L) -> Result<Loc<Self, F>, Loc<Error<L::Error>, F>> {
 		match lexer.next().map_loc_err(Error::Lexer)? {
@@ -47,7 +47,7 @@ pub trait Parsable<F>: Sized {
 	) -> Result<Loc<Self, F>, Loc<Error<L::Error>, F>>;
 }
 
-impl<F: Clone> Parsable<F> for crate::Document<F> {
+impl<F: Clone> Parse<F> for crate::Document<F> {
 	fn parse<L: Tokens<F>>(lexer: &mut L) -> Result<Loc<Self, F>, Loc<Error<L::Error>, F>> {
 		match lexer.next().map_loc_err(Error::Lexer)? {
 			Loc(Some(token), token_loc) => Self::parse_from(lexer, token, token_loc),
@@ -80,7 +80,7 @@ impl<F: Clone> Parsable<F> for crate::Document<F> {
 	}
 }
 
-impl<F: Clone> Parsable<F> for crate::Statement<F> {
+impl<F: Clone> Parse<F> for crate::Statement<F> {
 	fn parse_from<L: Tokens<F>>(
 		lexer: &mut L,
 		token: Token,
@@ -92,7 +92,7 @@ impl<F: Clone> Parsable<F> for crate::Statement<F> {
 					match lexer.next().map_loc_err(Error::Lexer)? {
 						Loc(Some(Token::IriRef(iri_ref)), iri_ref_loc) => {
 							match lexer.next().map_loc_err(Error::Lexer)? {
-								Loc(Some(Token::Punct(Punct::Dot)), dot_loc) => {
+								Loc(Some(Token::Punct(Punct::Period)), dot_loc) => {
 									loc.span_mut().append(dot_loc.span());
 									Ok(Loc(
 										Self::Directive(crate::Directive::Prefix(
@@ -115,7 +115,7 @@ impl<F: Clone> Parsable<F> for crate::Statement<F> {
 			Token::Keyword(Keyword::Base) => match lexer.next().map_loc_err(Error::Lexer)? {
 				Loc(Some(Token::IriRef(iri_ref)), iri_ref_loc) => {
 					match lexer.next().map_loc_err(Error::Lexer)? {
-						Loc(Some(Token::Punct(Punct::Dot)), dot_loc) => {
+						Loc(Some(Token::Punct(Punct::Period)), dot_loc) => {
 							loc.span_mut().append(dot_loc.span());
 							Ok(Loc(
 								Self::Directive(crate::Directive::Base(Loc(iri_ref, iri_ref_loc))),
@@ -149,19 +149,14 @@ impl<F: Clone> Parsable<F> for crate::Statement<F> {
 			}
 			Token::Keyword(Keyword::SparqlBase) => match lexer.next().map_loc_err(Error::Lexer)? {
 				Loc(Some(Token::IriRef(iri_ref)), iri_ref_loc) => {
-					match lexer.next().map_loc_err(Error::Lexer)? {
-						Loc(Some(Token::Punct(Punct::Dot)), dot_loc) => {
-							loc.span_mut().append(dot_loc.span());
-							Ok(Loc(
-								Self::Directive(crate::Directive::SparqlBase(Loc(
-									iri_ref,
-									iri_ref_loc,
-								))),
-								loc,
-							))
-						}
-						Loc(unexpected, loc) => Err(Loc(Error::Unexpected(unexpected), loc)),
-					}
+					loc.span_mut().append(iri_ref_loc.span());
+					Ok(Loc(
+						Self::Directive(crate::Directive::SparqlBase(Loc(
+							iri_ref,
+							iri_ref_loc,
+						))),
+						loc,
+					))
 				}
 				Loc(unexpected, loc) => Err(Loc(Error::Unexpected(unexpected), loc)),
 			},
@@ -174,13 +169,13 @@ impl<F: Clone> Parsable<F> for crate::Statement<F> {
 						if !po_list.is_empty() =>
 					{
 						match lexer.next().map_loc_err(Error::Lexer)? {
-							Loc(Some(Token::Punct(Punct::Dot)), _) => Vec::new(),
+							Loc(Some(Token::Punct(Punct::Period)), _) => Vec::new(),
 							Loc(Some(token), token_loc) => {
 								let Loc(po_list, po_list_loc) =
 									parse_predicate_object_list_from(lexer, token, token_loc)?;
 								loc.span_mut().append(po_list_loc.span());
 								match lexer.next().map_loc_err(Error::Lexer)? {
-									Loc(Some(Token::Punct(Punct::Dot)), _) => po_list,
+									Loc(Some(Token::Punct(Punct::Period)), _) => po_list,
 									Loc(unexpected, loc) => {
 										return Err(Loc(Error::Unexpected(unexpected), loc))
 									}
@@ -195,7 +190,7 @@ impl<F: Clone> Parsable<F> for crate::Statement<F> {
 						let Loc(po_list, po_list_loc) = parse_predicate_object_list(lexer)?;
 						loc.span_mut().append(po_list_loc.span());
 						match lexer.next().map_loc_err(Error::Lexer)? {
-							Loc(Some(Token::Punct(Punct::Dot)), _) => po_list,
+							Loc(Some(Token::Punct(Punct::Period)), _) => po_list,
 							Loc(unexpected, loc) => {
 								return Err(Loc(Error::Unexpected(unexpected), loc))
 							}
@@ -222,7 +217,7 @@ fn compact_iri<F: Clone>(
 	)
 }
 
-impl<F: Clone> Parsable<F> for crate::Subject<F> {
+impl<F: Clone> Parse<F> for crate::Subject<F> {
 	#[allow(clippy::type_complexity)]
 	fn parse_from<L: Tokens<F>>(
 		lexer: &mut L,
@@ -345,7 +340,7 @@ fn parse_blank_node_property_list<F: Clone, L: Tokens<F>>(
 	Ok(Loc(predicate_objects, loc))
 }
 
-impl<F: Clone> Parsable<F> for crate::Object<F> {
+impl<F: Clone> Parse<F> for crate::Object<F> {
 	fn parse_from<L: Tokens<F>>(
 		lexer: &mut L,
 		token: Token,
@@ -397,7 +392,7 @@ impl<F: Clone> Parsable<F> for crate::Object<F> {
 	}
 }
 
-impl<F: Clone> Parsable<F> for crate::PredicateObjects<F> {
+impl<F: Clone> Parse<F> for crate::PredicateObjects<F> {
 	fn parse_from<L: Tokens<F>>(
 		lexer: &mut L,
 		token: Token,
@@ -411,25 +406,40 @@ impl<F: Clone> Parsable<F> for crate::PredicateObjects<F> {
 	}
 }
 
-impl<F: Clone> Parsable<F> for crate::Verb<F> {
+impl<F: Clone> Parse<F> for crate::Verb<F> {
+	fn parse_from<L: Tokens<F>>(
+		lexer: &mut L,
+		token: Token,
+		loc: Location<F>,
+	) -> Result<Loc<Self, F>, Loc<Error<L::Error>, F>> {
+		match token {
+			Token::Keyword(Keyword::A) => Ok(Loc(crate::Verb::A, loc)),
+			token => {
+				let Loc(iri, loc) = crate::Iri::parse_from(lexer, token, loc)?;
+				Ok(Loc(crate::Verb::Predicate(iri), loc))
+			}
+		}
+	}
+}
+
+impl<F: Clone> Parse<F> for crate::Iri<F> {
 	fn parse_from<L: Tokens<F>>(
 		_lexer: &mut L,
 		token: Token,
 		loc: Location<F>,
 	) -> Result<Loc<Self, F>, Loc<Error<L::Error>, F>> {
 		match token {
-			Token::Keyword(Keyword::A) => Ok(Loc(crate::Verb::A, loc)),
 			Token::IriRef(iri_ref) => Ok(Loc(
-				crate::Verb::Predicate(crate::Iri::IriRef(iri_ref)),
+				crate::Iri::IriRef(iri_ref),
 				loc,
 			)),
 			Token::CompactIri(prefix, (suffix, suffix_span)) => Ok(Loc(
-				crate::Verb::Predicate(crate::Iri::Compact(
+				crate::Iri::Compact(
 					prefix.map(|(prefix, prefix_span)| {
 						Loc(prefix, Location::new(loc.file().clone(), prefix_span))
 					}),
 					Loc(suffix, Location::new(loc.file().clone(), suffix_span)),
-				)),
+				),
 				loc,
 			)),
 			unexpected => Err(Loc(Error::Unexpected(Some(unexpected)), loc)),
@@ -480,20 +490,15 @@ fn parse_rdf_literal<F: Clone, L: Tokens<F>>(
 		}
 		Loc(Some(Token::Punct(Punct::Carets)), _) => {
 			lexer.next().map_loc_err(Error::Lexer)?;
-			match lexer.next().map_loc_err(Error::Lexer)? {
-				Loc(Some(Token::IriRef(iri_ref)), iri_ref_loc) => {
-					let mut loc = string_loc.clone();
-					loc.span_mut().append(iri_ref_loc.span());
-					Ok(Loc(
-						RdfLiteral::TypedString(
-							Loc(string, string_loc),
-							Loc(iri_ref, iri_ref_loc),
-						),
-						loc,
-					))
-				}
-				Loc(unexpected, loc) => Err(Loc(Error::Unexpected(unexpected), loc)),
-			}
+			let iri = crate::Iri::parse(lexer)?;
+			let loc = string_loc.clone().with(iri.span());
+			Ok(Loc(
+				RdfLiteral::TypedString(
+					Loc(string, string_loc),
+					iri
+				),
+				loc
+			))
 		}
 		_ => Ok(Loc(
 			RdfLiteral::String(Loc(string, string_loc.clone())),
@@ -502,7 +507,7 @@ fn parse_rdf_literal<F: Clone, L: Tokens<F>>(
 	}
 }
 
-impl<F: Clone> Parsable<F> for crate::Literal<F> {
+impl<F: Clone> Parse<F> for crate::Literal<F> {
 	fn parse_from<L: Tokens<F>>(
 		lexer: &mut L,
 		token: Token,
@@ -513,7 +518,7 @@ impl<F: Clone> Parsable<F> for crate::Literal<F> {
 				let Loc(lit, loc) = parse_rdf_literal(lexer, string, loc)?;
 				Ok(Loc(crate::Literal::Rdf(lit), loc))
 			}
-			Token::Numeric(n) => Ok(Loc(crate::Literal::Numeric(n), loc)),
+			Token::Number(n) => Ok(Loc(crate::Literal::Number(n), loc)),
 			Token::Keyword(Keyword::True) => Ok(Loc(crate::Literal::Boolean(true), loc)),
 			Token::Keyword(Keyword::False) => Ok(Loc(crate::Literal::Boolean(false), loc)),
 			unexpected => Err(Loc(Error::Unexpected(Some(unexpected)), loc)),

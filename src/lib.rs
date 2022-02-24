@@ -21,7 +21,7 @@
 //! use std::io::Read;
 //! use turtle_syntax::{
 //!   lexing::{Lexer, Utf8Decoded},
-//!   parsing::Parsable,
+//!   parsing::Parse,
 //!   Document,
 //! };
 //!
@@ -81,3 +81,5 @@ pub mod lexing;
 pub mod parsing;
 
 pub use ast::*;
+pub use lexing::Lexer;
+pub use parsing::Parse;

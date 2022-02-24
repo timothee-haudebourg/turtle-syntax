@@ -1,4 +1,4 @@
-use crate::{BlankIdBuf, StringLiteral};
+use crate::{BlankIdBuf, DoubleBuf, StringLiteral};
 use iref::IriRefBuf;
 use langtag::LanguageTagBuf;
 use locspan::{Loc, Location, Span};
@@ -115,7 +115,7 @@ pub enum Token {
 	Punct(Punct),
 	Namespace(String),
 	CompactIri(Option<(String, Span)>, (String, Span)),
-	Numeric(Numeric),
+	Number(DoubleBuf),
 }
 
 impl fmt::Display for Token {
@@ -136,7 +136,7 @@ impl fmt::Display for Token {
 			Self::CompactIri(Some((prefix, _)), (suffix, _)) => {
 				write!(f, "compact IRI `{}:{}`", prefix, suffix)
 			}
-			Self::Numeric(n) => write!(f, "numeric literal `{}`", n),
+			Self::Number(n) => write!(f, "numeric literal `{}`", n),
 		}
 	}
 }
@@ -161,14 +161,6 @@ impl<'a> fmt::Display for DisplayStringLiteral<'a> {
 
 		Ok(())
 	}
-}
-
-/// Numerical value.
-#[derive(Clone, Debug)]
-pub struct Numeric(String);
-
-impl fmt::Display for Numeric {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { self.0.fmt(f) }
 }
 
 #[derive(Debug)]
@@ -247,7 +239,7 @@ impl Delimiter {
 
 #[derive(Debug)]
 pub enum Punct {
-	Dot,
+	Period,
 	Semicolon,
 	Comma,
 	Carets,
@@ -256,7 +248,7 @@ pub enum Punct {
 impl fmt::Display for Punct {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
-			Self::Dot => write!(f, "dot `.`"),
+			Self::Period => write!(f, "dot `.`"),
 			Self::Semicolon => write!(f, "semicolon `;`"),
 			Self::Comma => write!(f, "comma `,`"),
 			Self::Carets => write!(f, "carets `^^`"),
@@ -317,9 +309,9 @@ enum NameOrKeyword {
 	CompactIri(Option<(String, Span)>, (String, Span)),
 }
 
-enum NumericOrDot {
-	Numeric(Numeric),
-	Dot,
+enum NumberOrPeriod {
+	Number(DoubleBuf),
+	Period,
 }
 
 impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
@@ -396,8 +388,12 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 				Some(c) => {
 					if c.is_ascii_alphabetic() {
 						tag.push(self.expect_char()?);
-					} else if c.is_whitespace() {
-						break;
+					} else if c.is_whitespace() || c == '-' {
+						if tag.is_empty() {
+							return Err(Loc(Error::InvalidLangTag, self.pos.current()));
+						} else {
+							break;
+						}
 					} else {
 						self.next_char()?;
 						return Err(Loc(Error::Unexpected(Some(c)), self.pos.last()));
@@ -406,21 +402,35 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 			}
 		}
 
-		while let Some('-') = self.peek_char()? {
+		let mut empty_subtag = true;
+		if let Some('-') = self.peek_char()? {
+			tag.push(self.expect_char()?);
 			loop {
 				match self.peek_char()? {
+					Some('-') if !empty_subtag => {
+						tag.push(self.expect_char()?)
+					},
+					Some(c) if c.is_ascii_alphanumeric() => {
+						empty_subtag = false;
+						tag.push(self.expect_char()?)
+					},
+					Some(c) => {
+						if c.is_whitespace() {
+							if empty_subtag {
+								return Err(Loc(Error::InvalidLangTag, self.pos.current()));
+							} else {
+								break;
+							}
+						} else {
+							self.next_char()?;
+							return Err(Loc(Error::Unexpected(Some(c)), self.pos.last()));
+						}
+					}
 					None => {
-						if tag.is_empty() {
+						if empty_subtag {
 							return Err(Loc(Error::InvalidLangTag, self.pos.current()));
 						} else {
 							break;
-						}
-					}
-					Some(c) => {
-						if c.is_ascii_alphanumeric() {
-							tag.push(self.expect_char()?);
-						} else {
-							return Err(Loc(Error::Unexpected(Some(c)), self.pos.last()));
 						}
 					}
 				}
@@ -561,10 +571,9 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 					string.push(c)
 				}
 				Some(c) => {
-					if matches!(c, '\n' | '\r') {
-						return Err(Loc(Error::Unexpected(Some(c)), self.pos.last()));
-					}
-
+					// if !long && matches!(c, '\n' | '\r') {
+					// 	return Err(Loc(Error::Unexpected(Some(c)), self.pos.last()));
+					// }
 					string.push(c)
 				}
 				None => return Err(Loc(Error::Unexpected(None), self.pos.end())),
@@ -579,10 +588,11 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 	fn next_numeric_or_dot(
 		&mut self,
 		first: char,
-	) -> Result<Loc<NumericOrDot, F>, Loc<Error<E>, F>> {
+	) -> Result<Loc<NumberOrPeriod, F>, Loc<Error<E>, F>> {
 		let mut buffer = String::new();
 
 		enum State {
+			NonEmptyInteger,
 			Integer,
 			NonEmptyDecimal,
 			Decimal,
@@ -592,52 +602,55 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 		}
 
 		let mut state = match first {
-			'+' => State::Integer,
-			'-' => State::Integer,
+			'+' => State::NonEmptyInteger,
+			'-' => State::NonEmptyInteger,
 			'.' => State::NonEmptyDecimal,
 			'0'..='9' => State::Integer,
 			_ => panic!("invalid first numeric character"),
 		};
 
 		loop {
-			match state {
+			state = match state {
+				State::NonEmptyInteger => match self.peek_char()? {
+					Some('0'..='9') => State::Integer,
+					Some('.') => State::Decimal,
+					_ => break,
+				},
 				State::Integer => match self.peek_char()? {
-					Some('0'..='9') => (),
-					Some('.') => state = State::Decimal,
-					Some('e' | 'E') => state = State::ExponentSign,
+					Some('0'..='9') => State::Integer,
+					Some('.') => State::Decimal,
+					Some('e' | 'E') => State::ExponentSign,
 					_ => break,
 				},
 				State::NonEmptyDecimal => match self.peek_char()? {
-					Some('0'..='9') => state = State::Decimal,
-					Some('e' | 'E') => state = State::ExponentSign,
-					_ => return Ok(Loc(NumericOrDot::Dot, self.pos.current())),
+					Some('0'..='9') => State::Decimal,
+					_ => return Ok(Loc(NumberOrPeriod::Period, self.pos.current())),
 				},
 				State::Decimal => match self.peek_char()? {
-					Some('0'..='9') => (),
-					Some('e' | 'E') => state = State::ExponentSign,
+					Some('0'..='9') => State::Decimal,
+					Some('e' | 'E') => State::ExponentSign,
 					_ => break,
 				},
 				State::ExponentSign => match self.peek_char()? {
-					Some('+' | '-') => state = State::Exponent,
-					Some('0'..='9') => state = State::NonEmptyExponent,
+					Some('+' | '-') => State::NonEmptyExponent,
+					Some('0'..='9') => State::Exponent,
 					unexpected => return Err(Loc(Error::Unexpected(unexpected), self.pos.last())),
 				},
 				State::NonEmptyExponent => match self.peek_char()? {
-					Some('0'..='9') => state = State::Decimal,
-					Some('e' | 'E') => state = State::ExponentSign,
+					Some('0'..='9') => State::Exponent,
 					unexpected => return Err(Loc(Error::Unexpected(unexpected), self.pos.last())),
 				},
 				State::Exponent => match self.peek_char()? {
-					Some('0'..='9') => state = State::Exponent,
+					Some('0'..='9') => State::Exponent,
 					_ => break,
 				},
-			}
+			};
 
 			buffer.push(self.expect_char()?);
 		}
 
 		Ok(Loc(
-			NumericOrDot::Numeric(Numeric(buffer)),
+			NumberOrPeriod::Number(unsafe { DoubleBuf::new_unchecked(buffer) }),
 			self.pos.current(),
 		))
 	}
@@ -840,8 +853,8 @@ impl<F: Clone, E, C: Iterator<Item = Result<DecodedChar, E>>> Lexer<F, E, C> {
 			)),
 			Some(c @ ('+' | '-' | '0'..='9' | '.')) => {
 				Ok(self.next_numeric_or_dot(c)?.map(|t| match t {
-					NumericOrDot::Numeric(n) => Some(Token::Numeric(n)),
-					NumericOrDot::Dot => Some(Token::Punct(Punct::Dot)),
+					NumberOrPeriod::Number(n) => Some(Token::Number(n)),
+					NumberOrPeriod::Period => Some(Token::Punct(Punct::Period)),
 				}))
 			}
 			Some(c) => Ok(self.next_name_or_keyword(c)?.map(|t| match t {

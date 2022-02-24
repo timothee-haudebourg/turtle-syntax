@@ -2,7 +2,8 @@
 use iref::IriRefBuf;
 use locspan::Loc;
 use langtag::LanguageTagBuf;
-pub use rdf_types::{BlankIdBuf, StringLiteral};
+pub use rdf_types::{BlankId, BlankIdBuf, StringLiteral};
+pub use xsd_types::{Double, DoubleBuf};
 
 /// An IRI or compact IRI.
 #[derive(Clone, Debug)]
@@ -12,6 +13,7 @@ pub enum Iri<F> {
 }
 
 /// A Turtle document.
+#[derive(Clone, Debug)]
 pub struct Document<F> {
 	pub statements: Vec<Loc<Statement<F>, F>>,
 }
@@ -29,6 +31,7 @@ impl<F> Document<F> {
 }
 
 /// A statement (directive of triples declaration).
+#[derive(Clone, Debug)]
 pub enum Statement<F> {
 	/// Directive.
 	Directive(Directive<F>),
@@ -38,6 +41,7 @@ pub enum Statement<F> {
 }
 
 /// A directive.
+#[derive(Clone, Debug)]
 pub enum Directive<F> {
 	/// `@prefix` directive.
 	Prefix(Loc<String, F>, Loc<IriRefBuf, F>),
@@ -53,7 +57,7 @@ pub enum Directive<F> {
 }
 
 /// Verb (either `a` or a predicate).
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Verb<F> {
 	/// `a` keyword.
 	A,
@@ -62,13 +66,14 @@ pub enum Verb<F> {
 	Predicate(Iri<F>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum BlankNode<F> {
 	Label(BlankIdBuf),
 	Anonymous(Vec<Loc<PredicateObjects<F>, F>>),
 }
 
 /// Subject of a triples declaration.
+#[derive(Clone, Debug)]
 pub enum Subject<F> {
 	/// IRI or compact IRI.
 	Iri(Iri<F>),
@@ -81,7 +86,7 @@ pub enum Subject<F> {
 }
 
 /// Object of a triples declaration.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Object<F> {
 	/// IRI or compact IRI.
 	Iri(Iri<F>),
@@ -96,35 +101,33 @@ pub enum Object<F> {
 	Literal(Literal<F>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PredicateObjects<F> {
 	pub verb: Loc<Verb<F>, F>,
 	pub objects: Loc<Vec<Loc<Object<F>, F>>, F>,
 }
 
 /// Literal value.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Literal<F> {
 	Rdf(RdfLiteral<F>),
 
 	/// Numerical value.
-	Numeric(Numeric),
+	Number(DoubleBuf),
 
 	/// Boolean value.
 	Boolean(bool),
 }
 
 /// RDF Literal.
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+#[derive(Clone, Debug)]
 pub enum RdfLiteral<F> {
 	/// Untyped string literal.
 	String(Loc<StringLiteral, F>),
 
 	/// Typed string literal.
-	TypedString(Loc<StringLiteral, F>, Loc<IriRefBuf, F>),
+	TypedString(Loc<StringLiteral, F>, Loc<Iri<F>, F>),
 
 	/// Language string.
 	LangString(Loc<StringLiteral, F>, Loc<LanguageTagBuf, F>),
 }
-
-pub use crate::lexing::Numeric;

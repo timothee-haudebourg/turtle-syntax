@@ -6,7 +6,7 @@ use std::fs::File;
 use std::io::Read;
 use turtle_syntax::{
 	lexing::{Lexer, Utf8Decoded},
-	parsing::Parsable,
+	parsing::Parse,
 	Document,
 };
 

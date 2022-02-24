@@ -12,11 +12,14 @@ license = "MIT/Apache-2.0"
 readme = "README.md"
 
 [dependencies]
-iref = "2.1"
+iref = "2.1.1"
 locspan = "0.2.3"
 langtag = "0.2"
 unicase = "2.6"
 rdf-types = { version = "0.2", features = ["loc"] }
+xsd-types = "0.2"
 
 [dev-dependencies]
 codespan-reporting = "0.11.1"
+log = "0.4.14"
+stderrlog = "0.5.1"
