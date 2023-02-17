@@ -12,24 +12,48 @@ pub type RdfLiteral<M> = rdf_types::meta::Literal<M, StringLiteral, Iri<M>>;
 #[derive(Clone, Debug)]
 pub enum Iri<M> {
 	IriRef(IriRefBuf),
-	Compact(Option<Meta<String, M>>, Meta<String, M>),
+	Compact(Meta<String, M>, Meta<String, M>),
 }
 
 /// A Turtle document.
 #[derive(Clone, Debug)]
 pub struct Document<M> {
-	pub statements: Vec<Meta<Statement<M>, M>>,
+	pub base: Vec<Meta<BaseDirective<M>, M>>,
+	pub prefix: Vec<Meta<PrefixDirective<M>, M>>,
+	pub triples: Vec<Meta<Triples<M>, M>>,
+}
+
+impl<M> Default for Document<M> {
+	fn default() -> Self {
+		Self {
+			base: Vec::new(),
+			prefix: Vec::new(),
+			triples: Vec::new(),
+		}
+	}
 }
 
 impl<M> Document<M> {
-	pub fn base_prefix(&self) -> Option<IriRef> {
-		for stm in &self.statements {
-			if let Statement::Directive(Directive::Base(iri)) = stm.as_ref() {
-				return Some(iri.as_iri_ref());
-			}
-		}
+	pub fn new() -> Document<M> {
+		Self::default()
+	}
 
-		None
+	pub fn insert(&mut self, Meta(statement, meta): Meta<Statement<M>, M>) {
+		match statement {
+			Statement::Directive(Directive::Base(i)) => {
+				self.base.push(Meta(BaseDirective::Base(i), meta))
+			}
+			Statement::Directive(Directive::Prefix(p, s)) => {
+				self.prefix.push(Meta(PrefixDirective::Prefix(p, s), meta))
+			}
+			Statement::Directive(Directive::SparqlBase(i)) => {
+				self.base.push(Meta(BaseDirective::SparqlBase(i), meta))
+			}
+			Statement::Directive(Directive::SparqlPrefix(p, s)) => self
+				.prefix
+				.push(Meta(PrefixDirective::SparqlPrefix(p, s), meta)),
+			Statement::Triples(t) => self.triples.push(Meta(t, meta)),
+		}
 	}
 }
 
@@ -40,8 +64,16 @@ pub enum Statement<M> {
 	Directive(Directive<M>),
 
 	/// Triples declaration.
-	Triples(Meta<Subject<M>, M>, Meta<Vec<Meta<PredicateObjects<M>, M>>, M>),
+	Triples(Triples<M>),
 }
+
+#[derive(Clone, Debug)]
+pub struct Triples<M> {
+	pub subject: Meta<Subject<M>, M>,
+	pub predicate_objects_list: Meta<PredicateObjectsList<M>, M>,
+}
+
+pub type PredicateObjectsList<M> = Vec<Meta<PredicateObjects<M>, M>>;
 
 /// A directive.
 #[derive(Clone, Debug)]
@@ -57,6 +89,49 @@ pub enum Directive<M> {
 
 	/// SPARQL `BASE` directive.
 	SparqlBase(Meta<IriRefBuf, M>),
+}
+
+#[derive(Clone, Debug)]
+pub enum PrefixDirective<M> {
+	/// `@prefix` directive.
+	Prefix(Meta<String, M>, Meta<IriRefBuf, M>),
+
+	/// SPARQL `PREFIX` directive.
+	SparqlPrefix(Meta<String, M>, Meta<IriRefBuf, M>),
+}
+
+impl<M> PrefixDirective<M> {
+	pub fn prefix(&self) -> Meta<&str, &M> {
+		match self {
+			Self::Prefix(p, _) => p.borrow().map(String::as_str),
+			Self::SparqlPrefix(p, _) => p.borrow().map(String::as_str),
+		}
+	}
+
+	pub fn iri(&self) -> Meta<IriRef, &M> {
+		match self {
+			Self::Prefix(_, s) => s.borrow().map(IriRefBuf::as_iri_ref),
+			Self::SparqlPrefix(_, s) => s.borrow().map(IriRefBuf::as_iri_ref),
+		}
+	}
+}
+
+#[derive(Clone, Debug)]
+pub enum BaseDirective<M> {
+	/// `@base` directive.
+	Base(Meta<IriRefBuf, M>),
+
+	/// SPARQL `BASE` directive.
+	SparqlBase(Meta<IriRefBuf, M>),
+}
+
+impl<M> BaseDirective<M> {
+	pub fn iri(&self) -> Meta<IriRef, &M> {
+		match self {
+			Self::Base(i) => i.borrow().map(IriRefBuf::as_iri_ref),
+			Self::SparqlBase(i) => i.borrow().map(IriRefBuf::as_iri_ref),
+		}
+	}
 }
 
 /// Verb (either `a` or a predicate).
@@ -83,7 +158,8 @@ pub enum Subject<M> {
 }
 
 /// Collection of objects.
-pub type Collection<M> = Vec<Meta<Object<M>, M>>;
+#[derive(Clone, Debug)]
+pub struct Collection<M>(pub Vec<Meta<Object<M>, M>>);
 
 #[derive(Clone, Debug)]
 pub enum BlankNode<M> {
@@ -91,7 +167,7 @@ pub enum BlankNode<M> {
 	Anonymous(Meta<BlankNodePropertyList<M>, M>),
 }
 
-pub type BlankNodePropertyList<M> = Vec<Meta<PredicateObjects<M>, M>>;
+pub type BlankNodePropertyList<M> = PredicateObjectsList<M>;
 
 /// Object of a triples declaration.
 #[derive(Clone, Debug)]

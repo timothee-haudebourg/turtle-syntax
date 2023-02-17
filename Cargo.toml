@@ -14,6 +14,7 @@ readme = "README.md"
 [dependencies]
 decoded-char = "0.1.1"
 iref = "2.2.3"
+static-iref = "2.0.0"
 locspan = "0.7.13"
 langtag = "0.3.2"
 unicase = "2.6"

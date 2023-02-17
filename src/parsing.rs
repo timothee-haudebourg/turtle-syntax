@@ -1,6 +1,6 @@
 use crate::{
-	lexing::{Delimiter, Keyword, Punct, Token, Tokens, self},
-	RdfLiteral, Lexer, Collection
+	lexing::{self, Delimiter, Keyword, Punct, Token, Tokens},
+	Collection, Lexer, RdfLiteral,
 };
 use decoded_char::DecodedChar;
 use locspan::{Meta, Span};
@@ -19,7 +19,7 @@ impl From<Option<Token>> for Unexpected {
 	fn from(value: Option<Token>) -> Self {
 		match value {
 			Some(token) => Unexpected::Token(token),
-			None => Unexpected::EndOfFile
+			None => Unexpected::EndOfFile,
 		}
 	}
 }
@@ -40,16 +40,19 @@ pub trait Parse<M>: Sized {
 	fn parse_with<L, F>(parser: &mut Parser<L, F>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
-		F: FnMut(Span) -> M
+		F: FnMut(Span) -> M,
 	{
 		match parser.next()? {
 			Meta(Some(token), span) => Self::parse_from(parser, Meta(token, span)),
-			Meta(None, span) => Self::parse_empty::<L>(parser.build_metadata(span))
+			Meta(None, span) => Self::parse_empty::<L>(parser.build_metadata(span)),
 		}
 	}
 
 	#[allow(clippy::type_complexity)]
-	fn parse_from<L, F>(parser: &mut Parser<L, F>, token: Meta<Token, Span>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		token: Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
 		F: FnMut(Span) -> M;
@@ -57,9 +60,12 @@ pub trait Parse<M>: Sized {
 	#[allow(clippy::type_complexity)]
 	fn parse_empty<L>(meta: M) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
-		L: Tokens
+		L: Tokens,
 	{
-		Err(Meta(Box::new(Error::Unexpected(Unexpected::EndOfFile)), meta))
+		Err(Meta(
+			Box::new(Error::Unexpected(Unexpected::EndOfFile)),
+			meta,
+		))
 	}
 
 	#[inline(always)]
@@ -191,98 +197,115 @@ impl<L: Tokens, F: FnMut(Span) -> M, M> Parser<L, F> {
 }
 
 impl<M> Parse<M> for crate::Document<M> {
-	fn parse_from<L, F>(parser: &mut Parser<L, F>, Meta(token, mut span): Meta<Token, Span>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		Meta(token, mut span): Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
-		F: FnMut(Span) -> M
+		F: FnMut(Span) -> M,
 	{
-		let mut statements = vec![
-			crate::Statement::parse_from(parser, Meta(token, span))?
-		];
-		
+		let mut result = crate::Document::default();
+		result.insert(crate::Statement::parse_from(parser, Meta(token, span))?);
+
 		while let Meta(Some(token), span) = parser.next()? {
-			statements.push(crate::Statement::parse_from(parser, Meta(token, span))?)
+			result.insert(crate::Statement::parse_from(parser, Meta(token, span))?)
 		}
 
 		span.append(parser.last_span());
-		Ok(Meta(Self { statements }, parser.build_metadata(span)))
+		Ok(Meta(result, parser.build_metadata(span)))
 	}
 
 	fn parse_empty<L>(meta: M) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
-		L: Tokens
+		L: Tokens,
 	{
-		Ok(Meta(Self { statements: Vec::new() }, meta))
+		Ok(Meta(Self::new(), meta))
 	}
 }
 
 impl<M> Parse<M> for crate::Directive<M> {
-	fn parse_from<L, F>(parser: &mut Parser<L, F>, Meta(token, mut span): Meta<Token, Span>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		Meta(token, mut span): Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
-		F: FnMut(Span) -> M
+		F: FnMut(Span) -> M,
 	{
 		match token {
 			Token::Keyword(Keyword::Prefix) => match parser.next()? {
-				Meta(Some(Token::Namespace(namespace)), ns_span) => {
-					match parser.next()? {
-						Meta(Some(Token::IriRef(iri_ref)), iri_ref_span) => {
-							match parser.next()? {
-								Meta(Some(Token::Punct(Punct::Period)), dot_span) => {
-									span.append(dot_span);
-									Ok(Meta(
-										crate::Directive::Prefix(
-											Meta(namespace, parser.build_metadata(ns_span)),
-											Meta(iri_ref, parser.build_metadata(iri_ref_span)),
-										),
-										parser.build_metadata(span)
-									))
-								}
-								Meta(unexpected, span) => {
-									Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span)))
-								}
-							}
-						}
-						Meta(unexpected, span) => Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span))),
-					}
-				}
-				Meta(unexpected, span) => Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span))),
-			},
-			Token::Keyword(Keyword::Base) => match parser.next()? {
-				Meta(Some(Token::IriRef(iri_ref)), iri_ref_span) => {
-					match parser.next()? {
+				Meta(Some(Token::Namespace(namespace)), ns_span) => match parser.next()? {
+					Meta(Some(Token::IriRef(iri_ref)), iri_ref_span) => match parser.next()? {
 						Meta(Some(Token::Punct(Punct::Period)), dot_span) => {
 							span.append(dot_span);
 							Ok(Meta(
-								crate::Directive::Base(Meta(iri_ref, parser.build_metadata(iri_ref_span))),
+								crate::Directive::Prefix(
+									Meta(namespace, parser.build_metadata(ns_span)),
+									Meta(iri_ref, parser.build_metadata(iri_ref_span)),
+								),
 								parser.build_metadata(span),
 							))
 						}
-						Meta(unexpected, span) => Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span))),
-					}
-				}
-				Meta(unexpected, span) => Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span))),
+						Meta(unexpected, span) => Err(Meta(
+							Box::new(Error::Unexpected(unexpected.into())),
+							parser.build_metadata(span),
+						)),
+					},
+					Meta(unexpected, span) => Err(Meta(
+						Box::new(Error::Unexpected(unexpected.into())),
+						parser.build_metadata(span),
+					)),
+				},
+				Meta(unexpected, span) => Err(Meta(
+					Box::new(Error::Unexpected(unexpected.into())),
+					parser.build_metadata(span),
+				)),
 			},
-			Token::Keyword(Keyword::SparqlPrefix) => {
-				match parser.next()? {
-					Meta(Some(Token::Namespace(namespace)), ns_span) => {
-						match parser.next()? {
-							Meta(Some(Token::IriRef(iri_ref)), iri_ref_span) => {
-								span.append(iri_ref_span);
-								Ok(Meta(
-									crate::Directive::SparqlPrefix(
-										Meta(namespace, parser.build_metadata(ns_span)),
-										Meta(iri_ref, parser.build_metadata(iri_ref_span)),
-									),
-									parser.build_metadata(span),
-								))
-							}
-							Meta(unexpected, span) => Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span))),
-						}
+			Token::Keyword(Keyword::Base) => match parser.next()? {
+				Meta(Some(Token::IriRef(iri_ref)), iri_ref_span) => match parser.next()? {
+					Meta(Some(Token::Punct(Punct::Period)), dot_span) => {
+						span.append(dot_span);
+						Ok(Meta(
+							crate::Directive::Base(Meta(
+								iri_ref,
+								parser.build_metadata(iri_ref_span),
+							)),
+							parser.build_metadata(span),
+						))
 					}
-					Meta(unexpected, span) => Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span))),
-				}
-			}
+					Meta(unexpected, span) => Err(Meta(
+						Box::new(Error::Unexpected(unexpected.into())),
+						parser.build_metadata(span),
+					)),
+				},
+				Meta(unexpected, span) => Err(Meta(
+					Box::new(Error::Unexpected(unexpected.into())),
+					parser.build_metadata(span),
+				)),
+			},
+			Token::Keyword(Keyword::SparqlPrefix) => match parser.next()? {
+				Meta(Some(Token::Namespace(namespace)), ns_span) => match parser.next()? {
+					Meta(Some(Token::IriRef(iri_ref)), iri_ref_span) => {
+						span.append(iri_ref_span);
+						Ok(Meta(
+							crate::Directive::SparqlPrefix(
+								Meta(namespace, parser.build_metadata(ns_span)),
+								Meta(iri_ref, parser.build_metadata(iri_ref_span)),
+							),
+							parser.build_metadata(span),
+						))
+					}
+					Meta(unexpected, span) => Err(Meta(
+						Box::new(Error::Unexpected(unexpected.into())),
+						parser.build_metadata(span),
+					)),
+				},
+				Meta(unexpected, span) => Err(Meta(
+					Box::new(Error::Unexpected(unexpected.into())),
+					parser.build_metadata(span),
+				)),
+			},
 			Token::Keyword(Keyword::SparqlBase) => match parser.next()? {
 				Meta(Some(Token::IriRef(iri_ref)), iri_ref_span) => {
 					span.append(iri_ref_span);
@@ -294,66 +317,104 @@ impl<M> Parse<M> for crate::Directive<M> {
 						parser.build_metadata(span),
 					))
 				}
-				Meta(unexpected, span) => Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span))),
+				Meta(unexpected, span) => Err(Meta(
+					Box::new(Error::Unexpected(unexpected.into())),
+					parser.build_metadata(span),
+				)),
 			},
-			unexpected => Err(Meta(Box::new(Error::Unexpected(Unexpected::Token(unexpected))), parser.build_metadata(span)))
+			unexpected => Err(Meta(
+				Box::new(Error::Unexpected(Unexpected::Token(unexpected))),
+				parser.build_metadata(span),
+			)),
 		}
 	}
 }
 
 impl<M> Parse<M> for crate::Statement<M> {
-	fn parse_from<L, F>(parser: &mut Parser<L, F>, Meta(token, mut span): Meta<Token, Span>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		Meta(token, span): Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
-		F: FnMut(Span) -> M
+		F: FnMut(Span) -> M,
 	{
 		match token {
-			token @ Token::Keyword(Keyword::Prefix | Keyword::Base | Keyword::SparqlPrefix | Keyword::SparqlBase) => {
-				Ok(crate::Directive::parse_from(parser, Meta(token, span))?.map(Self::Directive))
-			},
+			token @ Token::Keyword(
+				Keyword::Prefix | Keyword::Base | Keyword::SparqlPrefix | Keyword::SparqlBase,
+			) => Ok(crate::Directive::parse_from(parser, Meta(token, span))?.map(Self::Directive)),
 			token => {
-				let subject = crate::Subject::parse_from(parser, Meta(token, span))?;
-
-				let po_list = match parser.peek()? {
-					Meta(Some(Token::Punct(Punct::Period)), p_span) => {
-						if !matches!(&subject, Meta(crate::Subject::BlankNode(crate::BlankNode::Anonymous(l)), _) if !l.is_empty()) {
-							return Err(
-								Meta(Box::new(Error::Unexpected(Unexpected::Token(Token::Punct(Punct::Period)))), parser.build_metadata(p_span))
-							);
-						}
-
-						let span = parser.last_span().next();
-						Meta(Vec::new(), parser.build_metadata(span))
-					},
-					_ => {
-						Vec::parse_with(parser)?
-					}
-				};
-
-				span.append(parser.last_span());
-
-				match parser.next()? {
-					Meta(Some(Token::Punct(Punct::Period)), _) => (),
-					Meta(unexpected, span) => {
-						return Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span)));
-					}
-				}
-
-				Ok(Meta(crate::Statement::Triples(subject, po_list), parser.build_metadata(span)))
+				let Meta(triples, meta) = crate::Triples::parse_from(parser, Meta(token, span))?;
+				Ok(Meta(crate::Statement::Triples(triples), meta))
 			}
 		}
 	}
 }
 
-impl<M> Parse<M> for Vec<Meta<crate::PredicateObjects<M>, M>> {
-	fn parse_from<L, F>(parser: &mut Parser<L, F>, Meta(token, span): Meta<Token, Span>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+impl<M> Parse<M> for crate::Triples<M> {
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		Meta(token, mut span): Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
-		F: FnMut(Span) -> M
+		F: FnMut(Span) -> M,
 	{
-		let mut result = vec![
-			crate::PredicateObjects::parse_from(parser, Meta(token, span))?
-		];
+		let subject = crate::Subject::parse_from(parser, Meta(token, span))?;
+
+		let po_list = match parser.peek()? {
+			Meta(Some(Token::Punct(Punct::Period)), p_span) => {
+				if !matches!(&subject, Meta(crate::Subject::BlankNode(crate::BlankNode::Anonymous(l)), _) if !l.is_empty())
+				{
+					return Err(Meta(
+						Box::new(Error::Unexpected(Unexpected::Token(Token::Punct(
+							Punct::Period,
+						)))),
+						parser.build_metadata(p_span),
+					));
+				}
+
+				let span = parser.last_span().next();
+				Meta(Vec::new(), parser.build_metadata(span))
+			}
+			_ => Vec::parse_with(parser)?,
+		};
+
+		span.append(parser.last_span());
+
+		match parser.next()? {
+			Meta(Some(Token::Punct(Punct::Period)), _) => (),
+			Meta(unexpected, span) => {
+				return Err(Meta(
+					Box::new(Error::Unexpected(unexpected.into())),
+					parser.build_metadata(span),
+				));
+			}
+		}
+
+		Ok(Meta(
+			crate::Triples {
+				subject,
+				predicate_objects_list: po_list,
+			},
+			parser.build_metadata(span),
+		))
+	}
+}
+
+impl<M> Parse<M> for Vec<Meta<crate::PredicateObjects<M>, M>> {
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		Meta(token, span): Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+	where
+		L: Tokens,
+		F: FnMut(Span) -> M,
+	{
+		let mut result = vec![crate::PredicateObjects::parse_from(
+			parser,
+			Meta(token, span),
+		)?];
 
 		loop {
 			match parser.peek()? {
@@ -366,7 +427,10 @@ impl<M> Parse<M> for Vec<Meta<crate::PredicateObjects<M>, M>> {
 				}
 				_ => {
 					let Meta(unexpected, span) = parser.next()?;
-					return Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span)));
+					return Err(Meta(
+						Box::new(Error::Unexpected(unexpected.into())),
+						parser.build_metadata(span),
+					));
 				}
 			}
 		}
@@ -376,10 +440,13 @@ impl<M> Parse<M> for Vec<Meta<crate::PredicateObjects<M>, M>> {
 }
 
 impl<M> Parse<M> for crate::PredicateObjects<M> {
-	fn parse_from<L, F>(parser: &mut Parser<L, F>, Meta(token, mut span): Meta<Token, Span>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		Meta(token, mut span): Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
-		F: FnMut(Span) -> M
+		F: FnMut(Span) -> M,
 	{
 		let verb = crate::Verb::parse_from(parser, Meta(token, span))?;
 		let objects = crate::Objects::parse_with(parser)?;
@@ -389,14 +456,15 @@ impl<M> Parse<M> for crate::PredicateObjects<M> {
 }
 
 impl<M> Parse<M> for crate::Objects<M> {
-	fn parse_from<L, F>(parser: &mut Parser<L, F>, Meta(token, span): Meta<Token, Span>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		Meta(token, span): Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
-		F: FnMut(Span) -> M
+		F: FnMut(Span) -> M,
 	{
-		let mut result = vec![
-			crate::Object::parse_from(parser, Meta(token, span))?
-		];
+		let mut result = vec![crate::Object::parse_from(parser, Meta(token, span))?];
 
 		loop {
 			match parser.peek()? {
@@ -404,12 +472,19 @@ impl<M> Parse<M> for crate::Objects<M> {
 					parser.next()?;
 					result.push(crate::Object::parse_with(parser)?);
 				}
-				Meta(Some(Token::Punct(Punct::Period | Punct::Semicolon) | Token::End(Delimiter::Bracket)), _) => {
-					break
-				}
+				Meta(
+					Some(
+						Token::Punct(Punct::Period | Punct::Semicolon)
+						| Token::End(Delimiter::Bracket),
+					),
+					_,
+				) => break,
 				_ => {
 					let Meta(unexpected, span) = parser.next()?;
-					return Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span)));
+					return Err(Meta(
+						Box::new(Error::Unexpected(unexpected.into())),
+						parser.build_metadata(span),
+					));
 				}
 			}
 		}
@@ -420,31 +495,33 @@ impl<M> Parse<M> for crate::Objects<M> {
 
 fn compact_iri<M, L, F>(
 	parser: &mut Parser<L, F>,
-	prefix: Option<(String, Span)>,
+	(prefix, prefix_span): (String, Span),
 	(suffix, suffix_span): (String, Span),
 ) -> crate::Iri<M>
 where
 	L: Tokens,
-	F: FnMut(Span) -> M
+	F: FnMut(Span) -> M,
 {
 	crate::Iri::Compact(
-		prefix.map(|(prefix, prefix_span)| {
-			Meta(prefix, parser.build_metadata(prefix_span))
-		}),
+		Meta(prefix, parser.build_metadata(prefix_span)),
 		Meta(suffix, parser.build_metadata(suffix_span)),
 	)
 }
 
 impl<M> Parse<M> for crate::Subject<M> {
-	fn parse_from<L, F>(parser: &mut Parser<L, F>, Meta(token, mut span): Meta<Token, Span>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		Meta(token, mut span): Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
-		F: FnMut(Span) -> M
+		F: FnMut(Span) -> M,
 	{
 		match token {
-			Token::IriRef(iri_ref) => {
-				Ok(Meta(crate::Subject::Iri(crate::Iri::IriRef(iri_ref)), parser.build_metadata(span)))
-			}
+			Token::IriRef(iri_ref) => Ok(Meta(
+				crate::Subject::Iri(crate::Iri::IriRef(iri_ref)),
+				parser.build_metadata(span),
+			)),
 			Token::CompactIri(prefix, suffix) => Ok(Meta(
 				crate::Subject::Iri(compact_iri(parser, prefix, suffix)),
 				parser.build_metadata(span),
@@ -458,16 +535,17 @@ impl<M> Parse<M> for crate::Subject<M> {
 					Meta(Some(Token::End(Delimiter::Bracket)), _) => {
 						let span = parser.last_span().next();
 						Meta(Vec::new(), parser.build_metadata(span))
-					},
-					_ => {
-						Vec::parse_with(parser)?
 					}
+					_ => Vec::parse_with(parser)?,
 				};
 
 				match parser.next()? {
 					Meta(Some(Token::End(Delimiter::Bracket)), _) => (),
 					Meta(unexpected, span) => {
-						return Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span)));
+						return Err(Meta(
+							Box::new(Error::Unexpected(unexpected.into())),
+							parser.build_metadata(span),
+						));
 					}
 				}
 
@@ -481,16 +559,22 @@ impl<M> Parse<M> for crate::Subject<M> {
 				let Meta(objects, meta) = Collection::parse_from(parser, Meta(token, span))?;
 				Ok(Meta(crate::Subject::Collection(objects), meta))
 			}
-			unexpected => Err(Meta(Box::new(Error::Unexpected(Unexpected::Token(unexpected))), parser.build_metadata(span))),
+			unexpected => Err(Meta(
+				Box::new(Error::Unexpected(Unexpected::Token(unexpected))),
+				parser.build_metadata(span),
+			)),
 		}
 	}
 }
 
 impl<M> Parse<M> for Collection<M> {
-	fn parse_from<L, F>(parser: &mut Parser<L, F>, Meta(token, mut span): Meta<Token, Span>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		Meta(token, mut span): Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
-		F: FnMut(Span) -> M
+		F: FnMut(Span) -> M,
 	{
 		match token {
 			Token::Begin(Delimiter::Parenthesis) => {
@@ -500,35 +584,45 @@ impl<M> Parse<M> for Collection<M> {
 					match parser.next()? {
 						Meta(Some(Token::End(Delimiter::Parenthesis)), end_span) => {
 							span.append(end_span);
-							break
+							break;
 						}
 						Meta(Some(token), span) => {
 							let object = crate::Object::parse_from(parser, Meta(token, span))?;
 							objects.push(object)
 						}
 						Meta(unexpected, span) => {
-							return Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span)))
+							return Err(Meta(
+								Box::new(Error::Unexpected(unexpected.into())),
+								parser.build_metadata(span),
+							))
 						}
 					}
-				};
+				}
 
-				Ok(Meta(objects, parser.build_metadata(span)))
+				Ok(Meta(Collection(objects), parser.build_metadata(span)))
 			}
-			unexpected => Err(Meta(Box::new(Error::Unexpected(Unexpected::Token(unexpected))), parser.build_metadata(span))),
+			unexpected => Err(Meta(
+				Box::new(Error::Unexpected(Unexpected::Token(unexpected))),
+				parser.build_metadata(span),
+			)),
 		}
 	}
 }
 
 impl<M> Parse<M> for crate::Object<M> {
-	fn parse_from<L, F>(parser: &mut Parser<L, F>, Meta(token, mut span): Meta<Token, Span>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		Meta(token, mut span): Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
-		F: FnMut(Span) -> M
+		F: FnMut(Span) -> M,
 	{
 		match token {
-			Token::IriRef(iri_ref) => {
-				Ok(Meta(crate::Object::Iri(crate::Iri::IriRef(iri_ref)), parser.build_metadata(span)))
-			}
+			Token::IriRef(iri_ref) => Ok(Meta(
+				crate::Object::Iri(crate::Iri::IriRef(iri_ref)),
+				parser.build_metadata(span),
+			)),
 			Token::CompactIri(prefix, suffix) => Ok(Meta(
 				crate::Object::Iri(compact_iri(parser, prefix, suffix)),
 				parser.build_metadata(span),
@@ -542,16 +636,17 @@ impl<M> Parse<M> for crate::Object<M> {
 					Meta(Some(Token::End(Delimiter::Bracket)), _) => {
 						let span = parser.last_span().next();
 						Meta(Vec::new(), parser.build_metadata(span))
-					},
-					_ => {
-						Vec::parse_with(parser)?
 					}
+					_ => Vec::parse_with(parser)?,
 				};
 
 				match parser.next()? {
 					Meta(Some(Token::End(Delimiter::Bracket)), _) => (),
 					Meta(unexpected, span) => {
-						return Err(Meta(Box::new(Error::Unexpected(unexpected.into())), parser.build_metadata(span)));
+						return Err(Meta(
+							Box::new(Error::Unexpected(unexpected.into())),
+							parser.build_metadata(span),
+						));
 					}
 				}
 
@@ -576,11 +671,11 @@ impl<M> Parse<M> for crate::Object<M> {
 #[allow(clippy::type_complexity)]
 fn parse_rdf_literal<M, L, F>(
 	parser: &mut Parser<L, F>,
-	Meta(string, string_span): Meta<rdf_types::StringLiteral, Span>
+	Meta(string, string_span): Meta<rdf_types::StringLiteral, Span>,
 ) -> Result<Meta<RdfLiteral<M>, M>, MetaError<L::Error, M>>
 where
 	L: Tokens,
-	F: FnMut(Span) -> M
+	F: FnMut(Span) -> M,
 {
 	match parser.peek()? {
 		Meta(Some(Token::LangTag(_)), tag_span) => {
@@ -591,7 +686,10 @@ where
 
 			let span = string_span.union(tag_span);
 			Ok(Meta(
-				RdfLiteral::LangString(Meta(string, parser.build_metadata(string_span)), Meta(tag, parser.build_metadata(tag_span))),
+				RdfLiteral::LangString(
+					Meta(string, parser.build_metadata(string_span)),
+					Meta(tag, parser.build_metadata(tag_span)),
+				),
 				parser.build_metadata(span),
 			))
 		}
@@ -600,11 +698,8 @@ where
 			let iri = crate::Iri::parse_with(parser)?;
 			let span = string_span.union(parser.last_span());
 			Ok(Meta(
-				RdfLiteral::TypedString(
-					Meta(string, parser.build_metadata(string_span)),
-					iri
-				),
-				parser.build_metadata(span)
+				RdfLiteral::TypedString(Meta(string, parser.build_metadata(string_span)), iri),
+				parser.build_metadata(span),
 			))
 		}
 		_ => Ok(Meta(
@@ -615,29 +710,47 @@ where
 }
 
 impl<M> Parse<M> for crate::Literal<M> {
-	fn parse_from<L, F>(parser: &mut Parser<L, F>, Meta(token, span): Meta<Token, Span>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		Meta(token, span): Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
-		F: FnMut(Span) -> M
+		F: FnMut(Span) -> M,
 	{
 		match token {
 			Token::StringLiteral(string) => {
 				let Meta(lit, loc) = parse_rdf_literal(parser, Meta(string, span))?;
 				Ok(Meta(crate::Literal::Rdf(lit), loc))
 			}
-			Token::Numeric(n) => Ok(Meta(crate::Literal::Numeric(n), parser.build_metadata(span))),
-			Token::Keyword(Keyword::True) => Ok(Meta(crate::Literal::Boolean(true), parser.build_metadata(span))),
-			Token::Keyword(Keyword::False) => Ok(Meta(crate::Literal::Boolean(false), parser.build_metadata(span))),
-			unexpected => Err(Meta(Box::new(Error::Unexpected(Unexpected::Token(unexpected))), parser.build_metadata(span))),
+			Token::Numeric(n) => Ok(Meta(
+				crate::Literal::Numeric(n),
+				parser.build_metadata(span),
+			)),
+			Token::Keyword(Keyword::True) => Ok(Meta(
+				crate::Literal::Boolean(true),
+				parser.build_metadata(span),
+			)),
+			Token::Keyword(Keyword::False) => Ok(Meta(
+				crate::Literal::Boolean(false),
+				parser.build_metadata(span),
+			)),
+			unexpected => Err(Meta(
+				Box::new(Error::Unexpected(Unexpected::Token(unexpected))),
+				parser.build_metadata(span),
+			)),
 		}
 	}
 }
 
 impl<M> Parse<M> for crate::Verb<M> {
-	fn parse_from<L, F>(parser: &mut Parser<L, F>, Meta(token, span): Meta<Token, Span>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		Meta(token, span): Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
-		F: FnMut(Span) -> M
+		F: FnMut(Span) -> M,
 	{
 		match token {
 			Token::Keyword(Keyword::A) => Ok(Meta(crate::Verb::A, parser.build_metadata(span))),
@@ -650,18 +763,27 @@ impl<M> Parse<M> for crate::Verb<M> {
 }
 
 impl<M> Parse<M> for crate::Iri<M> {
-	fn parse_from<L, F>(parser: &mut Parser<L, F>, Meta(token, span): Meta<Token, Span>) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
+	fn parse_from<L, F>(
+		parser: &mut Parser<L, F>,
+		Meta(token, span): Meta<Token, Span>,
+	) -> Result<Meta<Self, M>, MetaError<L::Error, M>>
 	where
 		L: Tokens,
-		F: FnMut(Span) -> M
+		F: FnMut(Span) -> M,
 	{
 		match token {
 			Token::IriRef(iri_ref) => Ok(Meta(
 				crate::Iri::IriRef(iri_ref),
 				parser.build_metadata(span),
 			)),
-			Token::CompactIri(prefix, suffix) => Ok(Meta(compact_iri(parser, prefix, suffix), parser.build_metadata(span))),
-			unexpected => Err(Meta(Box::new(Error::Unexpected(Unexpected::Token(unexpected))), parser.build_metadata(span))),
+			Token::CompactIri(prefix, suffix) => Ok(Meta(
+				compact_iri(parser, prefix, suffix),
+				parser.build_metadata(span),
+			)),
+			unexpected => Err(Meta(
+				Box::new(Error::Unexpected(Unexpected::Token(unexpected))),
+				parser.build_metadata(span),
+			)),
 		}
 	}
 }

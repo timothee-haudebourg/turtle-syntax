@@ -4,10 +4,7 @@ use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use locspan::Meta;
 use std::fs::File;
 use std::io::Read;
-use turtle_syntax::{
-	parsing::Parse,
-	Document,
-};
+use turtle_syntax::{parsing::Parse, Document};
 
 fn main() -> std::io::Result<()> {
 	let mut args = std::env::args();

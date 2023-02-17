@@ -71,7 +71,7 @@ pub enum Token {
 	BlankNodeLabel(BlankIdBuf),
 	Punct(Punct),
 	Namespace(String),
-	CompactIri(Option<(String, Span)>, (String, Span)),
+	CompactIri((String, Span), (String, Span)),
 	Numeric(NumericLiteral),
 }
 
@@ -89,8 +89,7 @@ impl fmt::Display for Token {
 			Self::BlankNodeLabel(label) => write!(f, "blank node label `{label}`"),
 			Self::Punct(p) => p.fmt(f),
 			Self::Namespace(ns) => write!(f, "namespace `{ns}`"),
-			Self::CompactIri(None, (suffix, _)) => write!(f, "compact IRI `:{suffix}`"),
-			Self::CompactIri(Some((prefix, _)), (suffix, _)) => {
+			Self::CompactIri((prefix, _), (suffix, _)) => {
 				write!(f, "compact IRI `{prefix}:{suffix}`")
 			}
 			Self::Numeric(n) => write!(f, "numeric literal `{n}`"),
@@ -263,7 +262,7 @@ enum LanguageTagOrKeyword {
 enum NameOrKeyword {
 	Keyword(Keyword),
 	Namespace(String),
-	CompactIri(Option<(String, Span)>, (String, Span)),
+	CompactIri((String, Span), (String, Span)),
 }
 
 enum NumericOrPeriod {
@@ -708,7 +707,7 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Lexer<C, E> {
 	) -> Result<Meta<NameOrKeyword, Span>, Meta<Error<E>, Span>> {
 		// PNAME_NS or Keyword
 		let namespace = match c {
-			':' => None,
+			':' => (String::new(), self.pos.current()),
 			c if is_pn_chars_base(c) => {
 				let mut namespace = String::new();
 				namespace.push(c);
@@ -743,7 +742,7 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Lexer<C, E> {
 					}
 				};
 
-				Some((namespace, span))
+				(namespace, span)
 			}
 			unexpected => {
 				return Err(Meta(
@@ -802,16 +801,10 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Lexer<C, E> {
 					}
 				}
 			}
-			_ => match namespace {
-				Some((namespace, _)) => Ok(Meta(
-					NameOrKeyword::Namespace(namespace),
-					self.pos.current(),
-				)),
-				None => Ok(Meta(
-					NameOrKeyword::Namespace(String::new()),
-					self.pos.current(),
-				)),
-			},
+			_ => Ok(Meta(
+				NameOrKeyword::Namespace(namespace.0),
+				self.pos.current(),
+			)),
 		}
 	}
 
