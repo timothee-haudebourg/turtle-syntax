@@ -1,25 +1,28 @@
 //! Syntax elements of Turtle.
-use iref::IriRefBuf;
-use locspan::Loc;
-use langtag::LanguageTagBuf;
+use std::fmt;
+
+use iref::{IriRef, IriRefBuf};
+use locspan::Meta;
 pub use rdf_types::{BlankId, BlankIdBuf, StringLiteral};
-pub use xsd_types::{Double, DoubleBuf};
+pub use xsd_types::lexical::{DecimalBuf, DoubleBuf, IntegerBuf};
+
+pub type RdfLiteral<M> = rdf_types::meta::Literal<M, StringLiteral, Iri<M>>;
 
 /// An IRI or compact IRI.
 #[derive(Clone, Debug)]
-pub enum Iri<F> {
+pub enum Iri<M> {
 	IriRef(IriRefBuf),
-	Compact(Option<Loc<String, F>>, Loc<String, F>),
+	Compact(Option<Meta<String, M>>, Meta<String, M>),
 }
 
 /// A Turtle document.
 #[derive(Clone, Debug)]
-pub struct Document<F> {
-	pub statements: Vec<Loc<Statement<F>, F>>,
+pub struct Document<M> {
+	pub statements: Vec<Meta<Statement<M>, M>>,
 }
 
-impl<F> Document<F> {
-	pub fn base_prefix(&self) -> Option<iref::IriRef> {
+impl<M> Document<M> {
+	pub fn base_prefix(&self) -> Option<IriRef> {
 		for stm in &self.statements {
 			if let Statement::Directive(Directive::Base(iri)) = stm.as_ref() {
 				return Some(iri.as_iri_ref());
@@ -32,102 +35,117 @@ impl<F> Document<F> {
 
 /// A statement (directive of triples declaration).
 #[derive(Clone, Debug)]
-pub enum Statement<F> {
+pub enum Statement<M> {
 	/// Directive.
-	Directive(Directive<F>),
+	Directive(Directive<M>),
 
 	/// Triples declaration.
-	Triples(Loc<Subject<F>, F>, Vec<Loc<PredicateObjects<F>, F>>),
+	Triples(Meta<Subject<M>, M>, Meta<Vec<Meta<PredicateObjects<M>, M>>, M>),
 }
 
 /// A directive.
 #[derive(Clone, Debug)]
-pub enum Directive<F> {
+pub enum Directive<M> {
 	/// `@prefix` directive.
-	Prefix(Loc<String, F>, Loc<IriRefBuf, F>),
+	Prefix(Meta<String, M>, Meta<IriRefBuf, M>),
 
 	/// `@base` directive.
-	Base(Loc<IriRefBuf, F>),
+	Base(Meta<IriRefBuf, M>),
 
 	/// SPARQL `PREFIX` directive.
-	SparqlPrefix(Loc<String, F>, Loc<IriRefBuf, F>),
+	SparqlPrefix(Meta<String, M>, Meta<IriRefBuf, M>),
 
 	/// SPARQL `BASE` directive.
-	SparqlBase(Loc<IriRefBuf, F>),
+	SparqlBase(Meta<IriRefBuf, M>),
 }
 
 /// Verb (either `a` or a predicate).
 #[derive(Clone, Debug)]
-pub enum Verb<F> {
+pub enum Verb<M> {
 	/// `a` keyword.
 	A,
 
 	/// Predicate.
-	Predicate(Iri<F>),
-}
-
-#[derive(Clone, Debug)]
-pub enum BlankNode<F> {
-	Label(BlankIdBuf),
-	Anonymous(Vec<Loc<PredicateObjects<F>, F>>),
+	Predicate(Iri<M>),
 }
 
 /// Subject of a triples declaration.
 #[derive(Clone, Debug)]
-pub enum Subject<F> {
+pub enum Subject<M> {
 	/// IRI or compact IRI.
-	Iri(Iri<F>),
+	Iri(Iri<M>),
 
 	/// Blank node.
-	BlankNode(BlankNode<F>),
+	BlankNode(BlankNode<M>),
 
 	/// Collection of subjects.
-	Collection(Vec<Loc<Object<F>, F>>),
+	Collection(Collection<M>),
 }
+
+/// Collection of objects.
+pub type Collection<M> = Vec<Meta<Object<M>, M>>;
+
+#[derive(Clone, Debug)]
+pub enum BlankNode<M> {
+	Label(BlankIdBuf),
+	Anonymous(Meta<BlankNodePropertyList<M>, M>),
+}
+
+pub type BlankNodePropertyList<M> = Vec<Meta<PredicateObjects<M>, M>>;
 
 /// Object of a triples declaration.
 #[derive(Clone, Debug)]
-pub enum Object<F> {
+pub enum Object<M> {
 	/// IRI or compact IRI.
-	Iri(Iri<F>),
+	Iri(Iri<M>),
 
 	/// Blank node.
-	BlankNode(BlankNode<F>),
+	BlankNode(BlankNode<M>),
 
 	/// Collection of objects.
-	Collection(Vec<Loc<Self, F>>),
+	Collection(Collection<M>),
 
 	/// Literal value.
-	Literal(Literal<F>),
+	Literal(Literal<M>),
 }
 
 #[derive(Clone, Debug)]
-pub struct PredicateObjects<F> {
-	pub verb: Loc<Verb<F>, F>,
-	pub objects: Loc<Vec<Loc<Object<F>, F>>, F>,
+pub struct PredicateObjects<M> {
+	pub verb: Meta<Verb<M>, M>,
+	pub objects: Meta<Objects<M>, M>,
 }
+
+/// Non empty list of objects.
+#[derive(Clone, Debug)]
+pub struct Objects<M>(pub Vec<Meta<Object<M>, M>>);
 
 /// Literal value.
 #[derive(Clone, Debug)]
-pub enum Literal<F> {
-	Rdf(RdfLiteral<F>),
+pub enum Literal<M> {
+	/// RDF literal.
+	Rdf(RdfLiteral<M>),
 
-	/// Numerical value.
-	Number(DoubleBuf),
+	/// Numeric literal.
+	Numeric(NumericLiteral),
 
-	/// Boolean value.
+	/// Boolean literal.
 	Boolean(bool),
 }
 
-/// RDF Literal.
+/// Numeric literal value.
 #[derive(Clone, Debug)]
-pub enum RdfLiteral<F> {
-	/// Untyped string literal.
-	String(Loc<StringLiteral, F>),
+pub enum NumericLiteral {
+	Integer(IntegerBuf),
+	Decimal(DecimalBuf),
+	Double(DoubleBuf),
+}
 
-	/// Typed string literal.
-	TypedString(Loc<StringLiteral, F>, Loc<Iri<F>, F>),
-
-	/// Language string.
-	LangString(Loc<StringLiteral, F>, Loc<LanguageTagBuf, F>),
+impl fmt::Display for NumericLiteral {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		match self {
+			Self::Integer(i) => i.fmt(f),
+			Self::Decimal(d) => d.fmt(f),
+			Self::Double(d) => d.fmt(f),
+		}
+	}
 }
