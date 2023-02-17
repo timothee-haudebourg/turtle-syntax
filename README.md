@@ -1,9 +1,11 @@
 # RDF 1.1 Turtle parser for Rust.
 
-[![CI](https://github.com/timothee-haudebourg/turtle-syntax/workflows/CI/badge.svg)](https://github.com/timothee-haudebourg/turtle-syntax/actions)
+[![CI](https://github.com/timothee-haudebourg/turtle-syntax/workflows/Continuous%20Integration/badge.svg)](https://github.com/timothee-haudebourg/turtle-syntax/actions)
 [![Crate informations](https://img.shields.io/crates/v/turtle-syntax.svg?style=flat-square)](https://crates.io/crates/turtle-syntax)
 [![License](https://img.shields.io/crates/l/turtle-syntax.svg?style=flat-square)](https://github.com/timothee-haudebourg/turtle-syntax#license)
 [![Documentation](https://img.shields.io/badge/docs-latest-blue.svg?style=flat-square)](https://docs.rs/turtle-syntax)
+
+<!-- cargo-rdme start -->
 
 Turtle is a textual syntax for RDF that allows an RDF graph to be completely
 written in a compact and natural text form, with abbreviations for common
@@ -23,16 +25,13 @@ to report errors.
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use codespan_reporting::files::SimpleFiles;
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-use locspan::Loc;
+use locspan::Meta;
 use std::fs::File;
 use std::io::Read;
 use turtle_syntax::{
-  lexing::{Lexer, Utf8Decoded},
-  parsing::Parsable,
+  parsing::Parse,
   Document,
 };
-
-fn infallible<T>(t: T) -> Result<T, std::convert::Infallible> { Ok(t) }
 
 fn main() -> std::io::Result<()> {
   let mut args = std::env::args();
@@ -42,25 +41,19 @@ fn main() -> std::io::Result<()> {
 
   for filename in args {
     let mut file = File::open(&filename)?;
-
     let mut buffer = String::new();
     file.read_to_string(&mut buffer)?;
     let file_id = files.add(filename.clone(), buffer);
     let buffer = files.get(file_id).unwrap();
 
-    let chars = Utf8Decoded::new(buffer.source().chars().map(infallible));
-    let mut lexer = Lexer::new(file_id, chars.peekable());
-
-    match Document::parse(&mut lexer) {
-      Ok(Loc(doc, _)) => {
-        for Loc(statement, loc) in doc.statements {
-          // do something...
-        }
+    match Document::parse_str(buffer.source().as_str(), |span| span) {
+      Ok(_doc) => {
+        // do something
       }
-      Err(Loc(e, loc)) => {
+      Err(Meta(e, span)) => {
         let diagnostic = Diagnostic::error()
           .with_message(format!("parse error: {}", e))
-          .with_labels(vec![Label::primary(*loc.file(), loc.span())]);
+          .with_labels(vec![Label::primary(file_id, span)]);
 
         let writer = StandardStream::stderr(ColorChoice::Auto);
         let config = codespan_reporting::term::Config::default();
@@ -76,13 +69,15 @@ fn main() -> std::io::Result<()> {
 
 The above code will have the following kind of output when a syntax error is
 detected:
-```
+```text
 error: parse error: unexpected character ` `
   ┌─ examples/syntax_error.ttl:5:34
   │
 5 │ <http://www.w3.org/TR/rdf-syntax- grammar>
   │                                  ^
 ```
+
+<!-- cargo-rdme end -->
 
 ## License
 
