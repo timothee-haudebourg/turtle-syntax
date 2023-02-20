@@ -1,0 +1,5 @@
+_:0 <http://xmlns.com/foaf/0.1/mbox> <mailto:timbl@w3.org> .
+<http://www.w3.org/People/Eric/ericP-foaf.rdf#ericP> <http://xmlns.com/foaf/0.1/givenName> "Eric" .
+<http://www.w3.org/People/Eric/ericP-foaf.rdf#ericP> <http://xmlns.com/foaf/0.1/knows> _:0 .
+<http://www.w3.org/People/Eric/ericP-foaf.rdf#ericP> <http://xmlns.com/foaf/0.1/knows> <http://getopenid.com/amyvdh> .
+<http://www.w3.org/People/Eric/ericP-foaf.rdf#ericP> <http://xmlns.com/foaf/0.1/knows> <http://norman.walsh.name/knows/who/dan-brickley> .

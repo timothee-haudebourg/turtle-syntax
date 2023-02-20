@@ -1,4 +1,4 @@
-use iref::{Iri, IriBuf, IriRef};
+use iref::{Iri, IriBuf, IriRef, IriRefBuf};
 use locspan::Meta;
 use rdf_types::{
 	BlankIdVocabulary, Generator, IriVocabulary, IriVocabularyMut, Triple, Vocabulary,
@@ -17,7 +17,7 @@ const XSD_DECIMAL: Iri<'static> = iri!("http://www.w3.org/2001/XMLSchema#decimal
 const XSD_DOUBLE: Iri<'static> = iri!("http://www.w3.org/2001/XMLSchema#double");
 
 /// Triple with metadata.
-pub type MetaTriple<M, V> = Meta<
+pub type MetaTriple<M, V = ()> = Meta<
 	Triple<
 		Meta<rdf_types::Subject<<V as IriVocabulary>::Iri, <V as BlankIdVocabulary>::BlankId>, M>,
 		Meta<<V as IriVocabulary>::Iri, M>,
@@ -33,9 +33,15 @@ pub type MetaTriple<M, V> = Meta<
 	M,
 >;
 
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
-	NoBaseIri,
+	#[error("cannot resolve relative IRI <{0}>: no base IRI")]
+	NoBaseIri(IriRefBuf),
+
+	#[error("unknown IRI prefix `{0}`")]
 	UnknownPrefix(String),
+
+	#[error("invalid compact IRI suffix in `{prefix}:{invalid_suffix}`")]
 	InvalidCompactIriSuffix {
 		prefix: String,
 		iri: IriBuf,
@@ -46,7 +52,22 @@ pub enum Error {
 pub type MetaError<M> = Meta<Box<Error>, M>;
 
 impl<M: Clone> crate::Document<M> {
-	pub fn build_triples<V: VocabularyMut>(
+	pub fn build_triples(
+		&self,
+		base_iri: Option<IriBuf>,
+		mut generator: impl Generator<()>,
+	) -> Result<Vec<MetaTriple<M, ()>>, MetaError<M>> {
+		let mut triples = Vec::new();
+		let mut context = Context::new(
+			base_iri,
+			rdf_types::vocabulary::no_vocabulary_mut(),
+			&mut generator,
+		);
+		self.build(&mut context, &mut triples)?;
+		Ok(triples)
+	}
+
+	pub fn build_triples_with<V: VocabularyMut>(
 		&self,
 		base_iri: Option<V::Iri>,
 		vocabulary: &mut V,
@@ -95,7 +116,10 @@ impl<'v, 'g, M, V: IriVocabulary, G> Context<'v, 'g, M, V, G> {
 			}
 			None => match iri_ref.into_iri() {
 				Ok(iri) => Ok(self.vocabulary.insert(iri)),
-				Err(_) => Err(Meta(Box::new(Error::NoBaseIri), meta.clone())),
+				Err(_) => Err(Meta(
+					Box::new(Error::NoBaseIri(iri_ref.to_owned())),
+					meta.clone(),
+				)),
 			},
 		}
 	}
@@ -157,19 +181,24 @@ where
 		context: &mut Context<M, V, G>,
 		triples: &mut Vec<MetaTriple<M, V>>,
 	) -> Result<(), MetaError<M>> {
-		// Find base IRI.
-		for base in &self.base {
-			context.base_iri = Some(context.resolve_iri_ref(base.iri())?);
-		}
-
-		// Define prefixes.
-		for def in &self.prefix {
-			let iri = context.resolve_iri_ref(def.iri())?;
-			context.insert_prefix(def.prefix().to_string(), iri, def.metadata().clone());
-		}
-
-		for Meta(t, meta) in &self.triples {
-			t.build(context, meta, triples)?;
+		for statement in &self.statements {
+			match statement {
+				Meta(crate::Statement::Directive(directive), meta) => match directive {
+					crate::Directive::Base(iri) | crate::Directive::SparqlBase(iri) => {
+						let iri_ref = iri.borrow().map(IriRefBuf::as_iri_ref);
+						context.base_iri = Some(context.resolve_iri_ref(iri_ref)?);
+					}
+					crate::Directive::Prefix(prefix, iri)
+					| crate::Directive::SparqlPrefix(prefix, iri) => {
+						let iri_ref = iri.borrow().map(IriRefBuf::as_iri_ref);
+						let iri = context.resolve_iri_ref(iri_ref)?;
+						context.insert_prefix(prefix.value().clone(), iri, meta.clone());
+					}
+				},
+				Meta(crate::Statement::Triples(t), meta) => {
+					t.build(context, meta, triples)?;
+				}
+			}
 		}
 
 		Ok(())

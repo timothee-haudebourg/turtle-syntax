@@ -1,0 +1,3 @@
+<http://en.wikipedia.org/wiki/Helium> <http://example.org/elementsatomicMass> "4.002602"^^<http://www.w3.org/2001/XMLSchema#decimal> .
+<http://en.wikipedia.org/wiki/Helium> <http://example.org/elementsatomicNumber> "2"^^<http://www.w3.org/2001/XMLSchema#integer> .
+<http://en.wikipedia.org/wiki/Helium> <http://example.org/elementsspecificGravity> "1.663E-4"^^<http://www.w3.org/2001/XMLSchema#double> .

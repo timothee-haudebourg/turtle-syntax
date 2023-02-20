@@ -1,3 +1,4 @@
+PREFIX : <http://example.org/stuff/1.0/>
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
     _:b0  rdf:first  1 ;
           rdf:rest   _:b1 .

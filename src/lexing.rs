@@ -564,7 +564,7 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Lexer<C, E> {
 		&mut self,
 		first: char,
 	) -> Result<Meta<NumericOrPeriod, Span>, Meta<Error<E>, Span>> {
-		let mut buffer = String::new();
+		let mut buffer: String = first.into();
 
 		enum State {
 			NonEmptyInteger,

@@ -1,7 +1,7 @@
 //! Syntax elements of Turtle.
 use std::fmt;
 
-use iref::{IriRef, IriRefBuf};
+use iref::IriRefBuf;
 use locspan::Meta;
 pub use rdf_types::{BlankId, BlankIdBuf, StringLiteral};
 pub use xsd_types::lexical::{DecimalBuf, DoubleBuf, IntegerBuf};
@@ -18,17 +18,13 @@ pub enum Iri<M> {
 /// A Turtle document.
 #[derive(Clone, Debug)]
 pub struct Document<M> {
-	pub base: Vec<Meta<BaseDirective<M>, M>>,
-	pub prefix: Vec<Meta<PrefixDirective<M>, M>>,
-	pub triples: Vec<Meta<Triples<M>, M>>,
+	pub statements: Vec<Meta<Statement<M>, M>>,
 }
 
 impl<M> Default for Document<M> {
 	fn default() -> Self {
 		Self {
-			base: Vec::new(),
-			prefix: Vec::new(),
-			triples: Vec::new(),
+			statements: Vec::new(),
 		}
 	}
 }
@@ -38,22 +34,8 @@ impl<M> Document<M> {
 		Self::default()
 	}
 
-	pub fn insert(&mut self, Meta(statement, meta): Meta<Statement<M>, M>) {
-		match statement {
-			Statement::Directive(Directive::Base(i)) => {
-				self.base.push(Meta(BaseDirective::Base(i), meta))
-			}
-			Statement::Directive(Directive::Prefix(p, s)) => {
-				self.prefix.push(Meta(PrefixDirective::Prefix(p, s), meta))
-			}
-			Statement::Directive(Directive::SparqlBase(i)) => {
-				self.base.push(Meta(BaseDirective::SparqlBase(i), meta))
-			}
-			Statement::Directive(Directive::SparqlPrefix(p, s)) => self
-				.prefix
-				.push(Meta(PrefixDirective::SparqlPrefix(p, s), meta)),
-			Statement::Triples(t) => self.triples.push(Meta(t, meta)),
-		}
+	pub fn insert(&mut self, statement: Meta<Statement<M>, M>) {
+		self.statements.push(statement)
 	}
 }
 
@@ -89,49 +71,6 @@ pub enum Directive<M> {
 
 	/// SPARQL `BASE` directive.
 	SparqlBase(Meta<IriRefBuf, M>),
-}
-
-#[derive(Clone, Debug)]
-pub enum PrefixDirective<M> {
-	/// `@prefix` directive.
-	Prefix(Meta<String, M>, Meta<IriRefBuf, M>),
-
-	/// SPARQL `PREFIX` directive.
-	SparqlPrefix(Meta<String, M>, Meta<IriRefBuf, M>),
-}
-
-impl<M> PrefixDirective<M> {
-	pub fn prefix(&self) -> Meta<&str, &M> {
-		match self {
-			Self::Prefix(p, _) => p.borrow().map(String::as_str),
-			Self::SparqlPrefix(p, _) => p.borrow().map(String::as_str),
-		}
-	}
-
-	pub fn iri(&self) -> Meta<IriRef, &M> {
-		match self {
-			Self::Prefix(_, s) => s.borrow().map(IriRefBuf::as_iri_ref),
-			Self::SparqlPrefix(_, s) => s.borrow().map(IriRefBuf::as_iri_ref),
-		}
-	}
-}
-
-#[derive(Clone, Debug)]
-pub enum BaseDirective<M> {
-	/// `@base` directive.
-	Base(Meta<IriRefBuf, M>),
-
-	/// SPARQL `BASE` directive.
-	SparqlBase(Meta<IriRefBuf, M>),
-}
-
-impl<M> BaseDirective<M> {
-	pub fn iri(&self) -> Meta<IriRef, &M> {
-		match self {
-			Self::Base(i) => i.borrow().map(IriRefBuf::as_iri_ref),
-			Self::SparqlBase(i) => i.borrow().map(IriRefBuf::as_iri_ref),
-		}
-	}
 }
 
 /// Verb (either `a` or a predicate).

@@ -1,0 +1,6 @@
+<http://example.org/vocab/show/218> <http://example.org/vocab/show/blurb> "This is a multi-line                        # literal with embedded new lines and quotes\nliteral with many quotes (\"\"\"\"\")\nand up to two sequential apostrophes ('')." .
+<http://example.org/vocab/show/218> <http://example.org/vocab/show/localName> "Cette Série des Années Septante"@fr-be .
+<http://example.org/vocab/show/218> <http://example.org/vocab/show/localName> "Cette Série des Années Soixante-dix"@fr .
+<http://example.org/vocab/show/218> <http://example.org/vocab/show/localName> "That Seventies Show"@en .
+<http://example.org/vocab/show/218> <http://www.w3.org/2000/01/rdf-schema#label> "That Seventies Show" .
+<http://example.org/vocab/show/218> <http://www.w3.org/2000/01/rdf-schema#label> "That Seventies Show"^^<http://www.w3.org/2001/XMLSchema#string> .
