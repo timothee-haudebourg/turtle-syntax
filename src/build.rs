@@ -439,7 +439,9 @@ where
 		triples: &mut Vec<MetaTriple<M, V>>,
 	) -> Result<Self::Target, MetaError<M>> {
 		match self {
-			Self::Iri(iri) => Ok(rdf_types::Object::Iri(iri.build(context, meta, triples)?)),
+			Self::Iri(iri) => Ok(rdf_types::Object::Id(rdf_types::Id::Iri(
+				iri.build(context, meta, triples)?,
+			))),
 			Self::BlankNode(b) => Ok(b.build(context, meta, triples)?.into_term()),
 			Self::Collection(collection) => {
 				Ok(collection.build(context, meta, triples)?.into_term())
@@ -456,7 +458,7 @@ where
 	V::Iri: Clone,
 	V::BlankId: Clone,
 {
-	type Target = rdf_types::meta::Literal<M, rdf_types::StringLiteral, V::Iri>;
+	type Target = rdf_types::meta::Literal<M, String, V::Iri>;
 
 	fn build(
 		&self,
@@ -477,7 +479,7 @@ where
 	V::Iri: Clone,
 	V::BlankId: Clone,
 {
-	type Target = rdf_types::meta::Literal<M, rdf_types::StringLiteral, V::Iri>;
+	type Target = rdf_types::meta::Literal<M, String, V::Iri>;
 
 	fn build(
 		&self,
@@ -488,7 +490,7 @@ where
 		let s = if *self { "true" } else { "false" };
 
 		Ok(rdf_types::meta::Literal::TypedString(
-			Meta(s.to_owned().into(), meta.clone()),
+			Meta(s.to_owned(), meta.clone()),
 			Meta(context.vocabulary.insert(XSD_BOOLEAN), meta.clone()),
 		))
 	}
@@ -500,7 +502,7 @@ where
 	V::Iri: Clone,
 	V::BlankId: Clone,
 {
-	type Target = rdf_types::meta::Literal<M, rdf_types::StringLiteral, V::Iri>;
+	type Target = rdf_types::meta::Literal<M, String, V::Iri>;
 
 	fn build(
 		&self,
@@ -515,7 +517,7 @@ where
 		};
 
 		Ok(rdf_types::meta::Literal::TypedString(
-			Meta(s.to_owned().into(), meta.clone()),
+			Meta(s.to_owned(), meta.clone()),
 			Meta(context.vocabulary.insert(ty), meta.clone()),
 		))
 	}
@@ -527,7 +529,7 @@ where
 	V::Iri: Clone,
 	V::BlankId: Clone,
 {
-	type Target = rdf_types::meta::Literal<M, rdf_types::StringLiteral, V::Iri>;
+	type Target = rdf_types::meta::Literal<M, String, V::Iri>;
 
 	fn build(
 		&self,

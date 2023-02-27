@@ -1,4 +1,4 @@
-use crate::{BlankIdBuf, DecimalBuf, DoubleBuf, IntegerBuf, NumericLiteral, StringLiteral};
+use crate::{BlankIdBuf, DecimalBuf, DoubleBuf, IntegerBuf, NumericLiteral};
 use decoded_char::DecodedChar;
 use iref::IriRefBuf;
 use langtag::LanguageTagBuf;
@@ -67,7 +67,7 @@ pub enum Token {
 	End(Delimiter),
 	LangTag(LanguageTagBuf),
 	IriRef(IriRefBuf),
-	StringLiteral(StringLiteral),
+	StringLiteral(String),
 	BlankNodeLabel(BlankIdBuf),
 	Punct(Punct),
 	Namespace(String),
@@ -492,7 +492,7 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Lexer<C, E> {
 	fn next_string_literal(
 		&mut self,
 		delimiter: char,
-	) -> Result<Meta<StringLiteral, Span>, Meta<Error<E>, Span>> {
+	) -> Result<Meta<String, Span>, Meta<Error<E>, Span>> {
 		let mut string = String::new();
 
 		let mut long = false;
@@ -555,7 +555,7 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Lexer<C, E> {
 			}
 		}
 
-		Ok(Meta(string.into(), self.pos.current()))
+		Ok(Meta(string, self.pos.current()))
 	}
 
 	/// Parses an IRI reference, starting after the first `<` until the closing

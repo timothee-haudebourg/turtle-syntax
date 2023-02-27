@@ -1,6 +1,6 @@
 [package]
 name = "turtle-syntax"
-version = "3.0.0"
+version = "4.0.0"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
 edition = "2021"
 categories = ["parsing"]
@@ -18,7 +18,7 @@ static-iref = "2.0.0"
 locspan = "0.7.13"
 langtag = "0.3.2"
 unicase = "2.6"
-rdf-types = { version = "0.12.19", features = ["meta"] }
+rdf-types = { version = "0.13.0", features = ["meta"] }
 xsd-types = "0.5.5"
 thiserror = "1.0.38"
 
@@ -26,4 +26,4 @@ thiserror = "1.0.38"
 codespan-reporting = "0.11.1"
 log = "0.4.17"
 stderrlog = "0.5.4"
-nquads-syntax = "0.10.0"
+nquads-syntax = "0.11.0"

@@ -671,7 +671,7 @@ impl<M> Parse<M> for crate::Object<M> {
 #[allow(clippy::type_complexity)]
 fn parse_rdf_literal<M, L, F>(
 	parser: &mut Parser<L, F>,
-	Meta(string, string_span): Meta<rdf_types::StringLiteral, Span>,
+	Meta(string, string_span): Meta<String, Span>,
 ) -> Result<Meta<RdfLiteral<M>, M>, MetaError<L::Error, M>>
 where
 	L: Tokens,
