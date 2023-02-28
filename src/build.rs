@@ -24,8 +24,9 @@ pub type MetaTriple<M, V = ()> = Meta<
 		Meta<
 			rdf_types::meta::Object<
 				M,
+				rdf_types::Id<<V as IriVocabulary>::Iri, <V as BlankIdVocabulary>::BlankId>,
+				String,
 				<V as IriVocabulary>::Iri,
-				<V as BlankIdVocabulary>::BlankId,
 			>,
 			M,
 		>,
@@ -430,7 +431,7 @@ where
 	V::Iri: Clone,
 	V::BlankId: Clone,
 {
-	type Target = rdf_types::meta::Object<M, V::Iri, V::BlankId>;
+	type Target = rdf_types::meta::Object<M, rdf_types::Id<V::Iri, V::BlankId>, String, V::Iri>;
 
 	fn build(
 		&self,
