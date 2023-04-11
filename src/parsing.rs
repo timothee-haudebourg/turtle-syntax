@@ -235,28 +235,45 @@ impl<M> Parse<M> for crate::Directive<M> {
 	{
 		match token {
 			Token::Keyword(Keyword::Prefix) => match parser.next()? {
-				Meta(Some(Token::Namespace(namespace)), ns_span) => match parser.next()? {
-					Meta(Some(Token::IriRef(iri_ref)), iri_ref_span) => match parser.next()? {
-						Meta(Some(Token::Punct(Punct::Period)), dot_span) => {
-							span.append(dot_span);
-							Ok(Meta(
-								crate::Directive::Prefix(
-									Meta(namespace, parser.build_metadata(ns_span)),
-									Meta(iri_ref, parser.build_metadata(iri_ref_span)),
-								),
+				Meta(Some(Token::CompactIri((namespace, ns_span), (suffix, suffix_span))), _) => {
+					if suffix.is_empty() {
+						match parser.next()? {
+							Meta(Some(Token::IriRef(iri_ref)), iri_ref_span) => {
+								match parser.next()? {
+									Meta(Some(Token::Punct(Punct::Period)), dot_span) => {
+										span.append(dot_span);
+										Ok(Meta(
+											crate::Directive::Prefix(
+												Meta(namespace, parser.build_metadata(ns_span)),
+												Meta(iri_ref, parser.build_metadata(iri_ref_span)),
+											),
+											parser.build_metadata(span),
+										))
+									}
+									Meta(unexpected, span) => Err(Meta(
+										Box::new(Error::Unexpected(unexpected.into())),
+										parser.build_metadata(span),
+									)),
+								}
+							}
+							Meta(unexpected, span) => Err(Meta(
+								Box::new(Error::Unexpected(unexpected.into())),
 								parser.build_metadata(span),
-							))
+							)),
 						}
-						Meta(unexpected, span) => Err(Meta(
-							Box::new(Error::Unexpected(unexpected.into())),
+					} else {
+						Err(Meta(
+							Box::new(Error::Unexpected(
+								Some(Token::CompactIri(
+									(namespace, ns_span),
+									(suffix, suffix_span),
+								))
+								.into(),
+							)),
 							parser.build_metadata(span),
-						)),
-					},
-					Meta(unexpected, span) => Err(Meta(
-						Box::new(Error::Unexpected(unexpected.into())),
-						parser.build_metadata(span),
-					)),
-				},
+						))
+					}
+				}
 				Meta(unexpected, span) => Err(Meta(
 					Box::new(Error::Unexpected(unexpected.into())),
 					parser.build_metadata(span),
@@ -285,22 +302,37 @@ impl<M> Parse<M> for crate::Directive<M> {
 				)),
 			},
 			Token::Keyword(Keyword::SparqlPrefix) => match parser.next()? {
-				Meta(Some(Token::Namespace(namespace)), ns_span) => match parser.next()? {
-					Meta(Some(Token::IriRef(iri_ref)), iri_ref_span) => {
-						span.append(iri_ref_span);
-						Ok(Meta(
-							crate::Directive::SparqlPrefix(
-								Meta(namespace, parser.build_metadata(ns_span)),
-								Meta(iri_ref, parser.build_metadata(iri_ref_span)),
-							),
+				Meta(Some(Token::CompactIri((namespace, ns_span), (suffix, suffix_span))), _) => {
+					if suffix.is_empty() {
+						match parser.next()? {
+							Meta(Some(Token::IriRef(iri_ref)), iri_ref_span) => {
+								span.append(iri_ref_span);
+								Ok(Meta(
+									crate::Directive::SparqlPrefix(
+										Meta(namespace, parser.build_metadata(ns_span)),
+										Meta(iri_ref, parser.build_metadata(iri_ref_span)),
+									),
+									parser.build_metadata(span),
+								))
+							}
+							Meta(unexpected, span) => Err(Meta(
+								Box::new(Error::Unexpected(unexpected.into())),
+								parser.build_metadata(span),
+							)),
+						}
+					} else {
+						Err(Meta(
+							Box::new(Error::Unexpected(
+								Some(Token::CompactIri(
+									(namespace, ns_span),
+									(suffix, suffix_span),
+								))
+								.into(),
+							)),
 							parser.build_metadata(span),
 						))
 					}
-					Meta(unexpected, span) => Err(Meta(
-						Box::new(Error::Unexpected(unexpected.into())),
-						parser.build_metadata(span),
-					)),
-				},
+				}
 				Meta(unexpected, span) => Err(Meta(
 					Box::new(Error::Unexpected(unexpected.into())),
 					parser.build_metadata(span),

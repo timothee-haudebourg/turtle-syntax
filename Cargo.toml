@@ -1,6 +1,6 @@
 [package]
 name = "turtle-syntax"
-version = "5.0.1"
+version = "5.0.2"
 authors = ["Timothée Haudebourg <author@haudebourg.net>"]
 edition = "2021"
 categories = ["parsing"]

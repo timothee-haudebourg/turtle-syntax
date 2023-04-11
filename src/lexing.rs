@@ -70,7 +70,6 @@ pub enum Token {
 	StringLiteral(String),
 	BlankNodeLabel(BlankIdBuf),
 	Punct(Punct),
-	Namespace(String),
 	CompactIri((String, Span), (String, Span)),
 	Numeric(NumericLiteral),
 }
@@ -88,7 +87,6 @@ impl fmt::Display for Token {
 			}
 			Self::BlankNodeLabel(label) => write!(f, "blank node label `{label}`"),
 			Self::Punct(p) => p.fmt(f),
-			Self::Namespace(ns) => write!(f, "namespace `{ns}`"),
 			Self::CompactIri((prefix, _), (suffix, _)) => {
 				write!(f, "compact IRI `{prefix}:{suffix}`")
 			}
@@ -261,7 +259,6 @@ enum LanguageTagOrKeyword {
 
 enum NameOrKeyword {
 	Keyword(Keyword),
-	Namespace(String),
 	CompactIri((String, Span), (String, Span)),
 }
 
@@ -794,7 +791,7 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Lexer<C, E> {
 				}
 			}
 			_ => Ok(Meta(
-				NameOrKeyword::Namespace(namespace.0),
+				NameOrKeyword::CompactIri(namespace, (String::new(), self.pos.current())),
 				self.pos.current(),
 			)),
 		}
@@ -850,7 +847,6 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Lexer<C, E> {
 			}
 			Some(c) => Ok(self.next_name_or_keyword(c)?.map(|t| match t {
 				NameOrKeyword::Keyword(kw) => Some(Token::Keyword(kw)),
-				NameOrKeyword::Namespace(n) => Some(Token::Namespace(n)),
 				NameOrKeyword::CompactIri(p, s) => Some(Token::CompactIri(p, s)),
 			})),
 			None => Ok(Meta(None, self.pos.end())),
