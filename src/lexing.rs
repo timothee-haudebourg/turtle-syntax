@@ -344,18 +344,10 @@ impl<C: Iterator<Item = Result<DecodedChar, E>>, E> Lexer<C, E> {
 				Some(c) => {
 					if c.is_ascii_alphabetic() {
 						tag.push(self.expect_char()?);
-					} else if c.is_whitespace() || c == '-' {
-						if tag.is_empty() {
-							return Err(Meta(Error::InvalidLangTag, self.pos.current()));
-						} else {
-							break;
-						}
+					} else if tag.is_empty() {
+						return Err(Meta(Error::InvalidLangTag, self.pos.current()));
 					} else {
-						self.next_char()?;
-						return Err(Meta(
-							Error::Unexpected(Unexpected::Char(c)),
-							self.pos.last(),
-						));
+						break;
 					}
 				}
 			}
