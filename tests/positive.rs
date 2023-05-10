@@ -89,5 +89,6 @@ positive_test! {
 	p25,
 	p26,
 	p27,
-	p28
+	p28,
+	p29
 }

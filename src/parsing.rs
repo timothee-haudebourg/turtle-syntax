@@ -452,7 +452,14 @@ impl<M> Parse<M> for Vec<Meta<crate::PredicateObjects<M>, M>> {
 			match parser.peek()? {
 				Meta(Some(Token::Punct(Punct::Semicolon)), _) => {
 					parser.next()?;
-					result.push(crate::PredicateObjects::parse_with(parser)?);
+
+					match parser.peek()? {
+						Meta(
+							Some(Token::Punct(Punct::Period) | Token::End(Delimiter::Bracket)),
+							_,
+						) => break,
+						_ => result.push(crate::PredicateObjects::parse_with(parser)?),
+					}
 				}
 				Meta(Some(Token::Punct(Punct::Period) | Token::End(Delimiter::Bracket)), _) => {
 					break
