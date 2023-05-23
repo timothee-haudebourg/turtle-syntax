@@ -8,6 +8,7 @@ use static_iref::iri;
 use std::collections::HashMap;
 
 const RDF_TYPE: Iri<'static> = iri!("http://www.w3.org/1999/02/22-rdf-syntax-ns#type");
+const RDF_LIST: Iri<'static> = iri!("http://www.w3.org/1999/02/22-rdf-syntax-ns#List");
 const RDF_NIL: Iri<'static> = iri!("http://www.w3.org/1999/02/22-rdf-syntax-ns#nil");
 const RDF_FIRST: Iri<'static> = iri!("http://www.w3.org/1999/02/22-rdf-syntax-ns#first");
 const RDF_REST: Iri<'static> = iri!("http://www.w3.org/1999/02/22-rdf-syntax-ns#rest");
@@ -381,6 +382,20 @@ where
 		for o in self.0.iter().rev() {
 			let item = o.build(context, triples)?;
 			let node = context.generator.next(context.vocabulary);
+
+			triples.push(Meta(
+				rdf_types::Triple(
+					Meta(node.clone(), item.metadata().clone()),
+					Meta(context.vocabulary.insert(RDF_TYPE), item.metadata().clone()),
+					Meta(
+						rdf_types::Term::Id(rdf_types::Id::Iri(
+							context.vocabulary.insert(RDF_LIST),
+						)),
+						item.metadata().clone(),
+					),
+				),
+				meta.clone(),
+			));
 
 			triples.push(Meta(
 				rdf_types::Triple(
