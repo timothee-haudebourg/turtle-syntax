@@ -707,6 +707,8 @@ impl<M> Parse<M> for crate::Object<M> {
 	}
 }
 
+const XSD_STRING: iref::Iri<'static> = static_iref::iri!("http://www.w3.org/2001/XMLSchema#string");
+
 #[allow(clippy::type_complexity)]
 fn parse_rdf_literal<M, L, F>(
 	parser: &mut Parser<L, F>,
@@ -725,26 +727,35 @@ where
 
 			let span = string_span.union(tag_span);
 			Ok(Meta(
-				RdfLiteral::LangString(
+				RdfLiteral::new(
 					Meta(string, parser.build_metadata(string_span)),
-					Meta(tag, parser.build_metadata(tag_span)),
+					Meta(
+						rdf_types::literal::Type::LangString(tag),
+						parser.build_metadata(tag_span),
+					),
 				),
 				parser.build_metadata(span),
 			))
 		}
 		Meta(Some(Token::Punct(Punct::Carets)), _) => {
 			parser.next()?;
-			let iri = crate::Iri::parse_with(parser)?;
+			let iri = crate::Iri::parse_with(parser)?.map(rdf_types::literal::Type::Any);
 			let span = string_span.union(parser.last_span());
 			Ok(Meta(
-				RdfLiteral::TypedString(Meta(string, parser.build_metadata(string_span)), iri),
+				RdfLiteral::new(Meta(string, parser.build_metadata(string_span)), iri),
 				parser.build_metadata(span),
 			))
 		}
-		_ => Ok(Meta(
-			RdfLiteral::String(Meta(string, parser.build_metadata(string_span))),
-			parser.build_metadata(string_span),
-		)),
+		_ => {
+			let ty = Meta(
+				rdf_types::literal::Type::Any(crate::Iri::IriRef(XSD_STRING.to_owned().into())),
+				parser.build_metadata(string_span),
+			);
+			Ok(Meta(
+				RdfLiteral::new(Meta(string, parser.build_metadata(string_span)), ty),
+				parser.build_metadata(string_span),
+			))
+		}
 	}
 }
 

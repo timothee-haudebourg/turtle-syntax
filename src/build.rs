@@ -1,8 +1,9 @@
 use iref::{Iri, IriBuf, IriRef, IriRefBuf};
+use langtag::LanguageTagBuf;
 use locspan::Meta;
 use rdf_types::{
-	BlankIdVocabulary, Generator, IriVocabulary, IriVocabularyMut, Triple, Vocabulary,
-	VocabularyMut,
+	literal::Type, BlankIdVocabulary, BlankIdVocabularyMut, Generator, IriVocabulary,
+	IriVocabularyMut, LanguageTagVocabulary, LanguageTagVocabularyMut, Namespace, Triple,
 };
 use static_iref::iri;
 use std::collections::HashMap;
@@ -26,8 +27,10 @@ pub type MetaTriple<M, V = ()> = Meta<
 			rdf_types::meta::Object<
 				M,
 				rdf_types::Id<<V as IriVocabulary>::Iri, <V as BlankIdVocabulary>::BlankId>,
-				String,
-				<V as IriVocabulary>::Iri,
+				rdf_types::literal::Type<
+					<V as IriVocabulary>::Iri,
+					<V as LanguageTagVocabulary>::LanguageTag,
+				>,
 			>,
 			M,
 		>,
@@ -69,7 +72,9 @@ impl<M: Clone> crate::Document<M> {
 		Ok(triples)
 	}
 
-	pub fn build_triples_with<V: VocabularyMut>(
+	pub fn build_triples_with<
+		V: RdfVocabulary + IriVocabularyMut + BlankIdVocabularyMut + LanguageTagVocabularyMut,
+	>(
 		&self,
 		base_iri: Option<V::Iri>,
 		vocabulary: &mut V,
@@ -165,7 +170,24 @@ impl<'v, 'g, M, V: IriVocabulary, G> Context<'v, 'g, M, V, G> {
 	}
 }
 
-pub trait Build<M, V: VocabularyMut, G> {
+pub trait RdfVocabulary:
+	IriVocabulary
+	+ BlankIdVocabulary
+	+ LanguageTagVocabulary
+	+ Namespace<Id = rdf_types::Id<Self::Iri, Self::BlankId>>
+{
+}
+
+impl<
+		V: IriVocabulary
+			+ BlankIdVocabulary
+			+ LanguageTagVocabulary
+			+ Namespace<Id = rdf_types::Id<V::Iri, V::BlankId>>,
+	> RdfVocabulary for V
+{
+}
+
+pub trait Build<M, V: RdfVocabulary, G> {
 	fn build(
 		&self,
 		context: &mut Context<M, V, G>,
@@ -173,7 +195,11 @@ pub trait Build<M, V: VocabularyMut, G> {
 	) -> Result<(), MetaError<M>>;
 }
 
-impl<M: Clone, V: VocabularyMut, G: Generator<V>> Build<M, V, G> for crate::Document<M>
+impl<
+		M: Clone,
+		V: RdfVocabulary + IriVocabularyMut + BlankIdVocabularyMut + LanguageTagVocabularyMut,
+		G: Generator<V>,
+	> Build<M, V, G> for crate::Document<M>
 where
 	V::Iri: Clone,
 	V::BlankId: Clone,
@@ -208,7 +234,10 @@ where
 }
 
 impl<M: Clone> crate::Triples<M> {
-	fn build<V: VocabularyMut, G: Generator<V>>(
+	fn build<
+		V: RdfVocabulary + IriVocabularyMut + BlankIdVocabularyMut + LanguageTagVocabularyMut,
+		G: Generator<V>,
+	>(
 		&self,
 		context: &mut Context<M, V, G>,
 		meta: &M,
@@ -229,7 +258,10 @@ impl<M: Clone> crate::Triples<M> {
 }
 
 impl<M: Clone> crate::PredicateObjects<M> {
-	fn build<V: VocabularyMut, G: Generator<V>>(
+	fn build<
+		V: RdfVocabulary + IriVocabularyMut + BlankIdVocabularyMut + LanguageTagVocabularyMut,
+		G: Generator<V>,
+	>(
 		&self,
 		context: &mut Context<M, V, G>,
 		meta: &M,
@@ -254,7 +286,7 @@ impl<M: Clone> crate::PredicateObjects<M> {
 	}
 }
 
-trait BuildFragment<M, V: Vocabulary, G> {
+trait BuildFragment<M, V: RdfVocabulary + BlankIdVocabulary, G> {
 	type Target;
 
 	fn build(
@@ -264,8 +296,8 @@ trait BuildFragment<M, V: Vocabulary, G> {
 	) -> Result<Self::Target, MetaError<M>>;
 }
 
-impl<T: BuildMetaFragment<M, V, G>, M: Clone, V: VocabularyMut, G> BuildFragment<M, V, G>
-	for Meta<T, M>
+impl<T: BuildMetaFragment<M, V, G>, M: Clone, V: RdfVocabulary + BlankIdVocabulary, G>
+	BuildFragment<M, V, G> for Meta<T, M>
 {
 	type Target = Meta<T::Target, M>;
 
@@ -281,7 +313,7 @@ impl<T: BuildMetaFragment<M, V, G>, M: Clone, V: VocabularyMut, G> BuildFragment
 	}
 }
 
-trait BuildMetaFragment<M, V: Vocabulary, G> {
+trait BuildMetaFragment<M, V: RdfVocabulary, G> {
 	type Target;
 
 	fn build(
@@ -292,7 +324,9 @@ trait BuildMetaFragment<M, V: Vocabulary, G> {
 	) -> Result<Self::Target, MetaError<M>>;
 }
 
-impl<M: Clone, V: VocabularyMut, G> BuildMetaFragment<M, V, G> for crate::Iri<M> {
+impl<M: Clone, V: RdfVocabulary + IriVocabularyMut + BlankIdVocabulary, G>
+	BuildMetaFragment<M, V, G> for crate::Iri<M>
+{
 	type Target = V::Iri;
 
 	fn build(
@@ -312,8 +346,9 @@ impl<M: Clone, V: VocabularyMut, G> BuildMetaFragment<M, V, G> for crate::Iri<M>
 	}
 }
 
-impl<M: Clone, V: VocabularyMut, G: Generator<V>> BuildMetaFragment<M, V, G> for crate::BlankNode<M>
+impl<M: Clone, V: RdfVocabulary, G: Generator<V>> BuildMetaFragment<M, V, G> for crate::BlankNode<M>
 where
+	V: IriVocabularyMut + BlankIdVocabularyMut + LanguageTagVocabularyMut,
 	V::Iri: Clone,
 	V::BlankId: Clone,
 {
@@ -342,8 +377,9 @@ where
 	}
 }
 
-impl<M: Clone, V: VocabularyMut, G: Generator<V>> BuildMetaFragment<M, V, G> for crate::Subject<M>
+impl<M: Clone, V: RdfVocabulary, G: Generator<V>> BuildMetaFragment<M, V, G> for crate::Subject<M>
 where
+	V: IriVocabularyMut + BlankIdVocabularyMut + LanguageTagVocabularyMut,
 	V::Iri: Clone,
 	V::BlankId: Clone,
 {
@@ -363,9 +399,10 @@ where
 	}
 }
 
-impl<M: Clone, V: VocabularyMut, G: Generator<V>> BuildMetaFragment<M, V, G>
+impl<M: Clone, V: RdfVocabulary, G: Generator<V>> BuildMetaFragment<M, V, G>
 	for crate::Collection<M>
 where
+	V: IriVocabularyMut + BlankIdVocabularyMut + LanguageTagVocabularyMut,
 	V::Iri: Clone,
 	V::BlankId: Clone,
 {
@@ -425,7 +462,9 @@ where
 	}
 }
 
-impl<M: Clone, V: VocabularyMut, G> BuildMetaFragment<M, V, G> for crate::Verb<M> {
+impl<M: Clone, V: RdfVocabulary + IriVocabularyMut, G> BuildMetaFragment<M, V, G>
+	for crate::Verb<M>
+{
 	type Target = V::Iri;
 
 	fn build(
@@ -441,12 +480,14 @@ impl<M: Clone, V: VocabularyMut, G> BuildMetaFragment<M, V, G> for crate::Verb<M
 	}
 }
 
-impl<M: Clone, V: VocabularyMut, G: Generator<V>> BuildMetaFragment<M, V, G> for crate::Object<M>
+impl<M: Clone, V: RdfVocabulary, G: Generator<V>> BuildMetaFragment<M, V, G> for crate::Object<M>
 where
+	V: IriVocabularyMut + BlankIdVocabularyMut + LanguageTagVocabularyMut,
 	V::Iri: Clone,
 	V::BlankId: Clone,
 {
-	type Target = rdf_types::meta::Object<M, rdf_types::Id<V::Iri, V::BlankId>, String, V::Iri>;
+	type Target =
+		rdf_types::meta::Object<M, rdf_types::Id<V::Iri, V::BlankId>, Type<V::Iri, V::LanguageTag>>;
 
 	fn build(
 		&self,
@@ -469,12 +510,11 @@ where
 	}
 }
 
-impl<M: Clone, V: VocabularyMut, G: Generator<V>> BuildMetaFragment<M, V, G> for crate::Literal<M>
+impl<M: Clone, V: RdfVocabulary, G> BuildMetaFragment<M, V, G> for crate::Literal<M>
 where
-	V::Iri: Clone,
-	V::BlankId: Clone,
+	V: IriVocabularyMut + BlankIdVocabulary + LanguageTagVocabularyMut,
 {
-	type Target = rdf_types::meta::Literal<M, String, V::Iri>;
+	type Target = rdf_types::meta::Literal<M, Type<V::Iri, V::LanguageTag>>;
 
 	fn build(
 		&self,
@@ -490,12 +530,11 @@ where
 	}
 }
 
-impl<M: Clone, V: VocabularyMut, G: Generator<V>> BuildMetaFragment<M, V, G> for bool
+impl<M: Clone, V: RdfVocabulary, G> BuildMetaFragment<M, V, G> for bool
 where
-	V::Iri: Clone,
-	V::BlankId: Clone,
+	V: IriVocabularyMut + BlankIdVocabulary + LanguageTagVocabulary,
 {
-	type Target = rdf_types::meta::Literal<M, String, V::Iri>;
+	type Target = rdf_types::meta::Literal<M, Type<V::Iri, V::LanguageTag>>;
 
 	fn build(
 		&self,
@@ -505,20 +544,21 @@ where
 	) -> Result<Self::Target, MetaError<M>> {
 		let s = if *self { "true" } else { "false" };
 
-		Ok(rdf_types::meta::Literal::TypedString(
+		Ok(rdf_types::meta::Literal::new(
 			Meta(s.to_owned(), meta.clone()),
-			Meta(context.vocabulary.insert(XSD_BOOLEAN), meta.clone()),
+			Meta(
+				rdf_types::literal::Type::Any(context.vocabulary.insert(XSD_BOOLEAN)),
+				meta.clone(),
+			),
 		))
 	}
 }
 
-impl<M: Clone, V: VocabularyMut, G: Generator<V>> BuildMetaFragment<M, V, G>
-	for crate::NumericLiteral
+impl<M: Clone, V: RdfVocabulary, G> BuildMetaFragment<M, V, G> for crate::NumericLiteral
 where
-	V::Iri: Clone,
-	V::BlankId: Clone,
+	V: IriVocabularyMut + BlankIdVocabulary + LanguageTagVocabulary,
 {
-	type Target = rdf_types::meta::Literal<M, String, V::Iri>;
+	type Target = rdf_types::meta::Literal<M, Type<V::Iri, V::LanguageTag>>;
 
 	fn build(
 		&self,
@@ -532,20 +572,18 @@ where
 			Self::Double(d) => (d.as_str(), XSD_DOUBLE),
 		};
 
-		Ok(rdf_types::meta::Literal::TypedString(
+		Ok(rdf_types::meta::Literal::new(
 			Meta(s.to_owned(), meta.clone()),
-			Meta(context.vocabulary.insert(ty), meta.clone()),
+			Meta(Type::Any(context.vocabulary.insert(ty)), meta.clone()),
 		))
 	}
 }
 
-impl<M: Clone, V: VocabularyMut, G: Generator<V>> BuildMetaFragment<M, V, G>
-	for crate::RdfLiteral<M>
+impl<M: Clone, V: RdfVocabulary, G> BuildMetaFragment<M, V, G> for crate::RdfLiteral<M>
 where
-	V::Iri: Clone,
-	V::BlankId: Clone,
+	V: IriVocabularyMut + BlankIdVocabulary + LanguageTagVocabularyMut,
 {
-	type Target = rdf_types::meta::Literal<M, String, V::Iri>;
+	type Target = rdf_types::meta::Literal<M, Type<V::Iri, V::LanguageTag>>;
 
 	fn build(
 		&self,
@@ -553,15 +591,32 @@ where
 		_meta: &M,
 		triples: &mut Vec<MetaTriple<M, V>>,
 	) -> Result<Self::Target, MetaError<M>> {
-		match self {
-			Self::String(s) => Ok(rdf_types::meta::Literal::String(s.clone())),
-			Self::LangString(s, t) => {
-				Ok(rdf_types::meta::Literal::LangString(s.clone(), t.clone()))
-			}
-			Self::TypedString(s, t) => Ok(rdf_types::meta::Literal::TypedString(
-				s.clone(),
-				t.build(context, triples)?,
-			)),
-		}
+		let type_ = match self.type_() {
+			Meta(rdf_types::literal::Type::Any(t), meta) => Meta(
+				rdf_types::literal::Type::Any(t.build(context, meta, triples)?),
+				meta.clone(),
+			),
+			Meta(rdf_types::literal::Type::LangString(tag), meta) => Meta(
+				rdf_types::literal::Type::LangString(tag.build(context, meta, triples)?),
+				meta.clone(),
+			),
+		};
+
+		Ok(rdf_types::meta::Literal::new(self.value().clone(), type_))
+	}
+}
+
+impl<M: Clone, V: RdfVocabulary + LanguageTagVocabularyMut, G> BuildMetaFragment<M, V, G>
+	for LanguageTagBuf
+{
+	type Target = V::LanguageTag;
+
+	fn build(
+		&self,
+		context: &mut Context<M, V, G>,
+		_meta: &M,
+		_triples: &mut Vec<MetaTriple<M, V>>,
+	) -> Result<Self::Target, MetaError<M>> {
+		Ok(context.vocabulary.insert_language_tag(self.as_ref()))
 	}
 }

@@ -6,7 +6,7 @@ use locspan::Meta;
 pub use rdf_types::{BlankId, BlankIdBuf};
 pub use xsd_types::lexical::{DecimalBuf, DoubleBuf, IntegerBuf};
 
-pub type RdfLiteral<M> = rdf_types::meta::Literal<M, String, Iri<M>>;
+pub type RdfLiteral<M> = rdf_types::meta::Literal<M, rdf_types::literal::Type<Iri<M>>>;
 
 /// An IRI or compact IRI.
 #[derive(Clone, Debug)]
